@@ -15,6 +15,12 @@ import {
   type Pellet,
   type PowerPellet,
 } from "./engine/index.ts";
+import {
+  drawGhost as drawSharedGhost,
+  drawPellet,
+  drawPlayer,
+  drawPowerPellet,
+} from "./rendering.ts";
 
 const BLOCK_SIZE = 16;
 const BOARD_OFFSET = 16;
@@ -59,42 +65,6 @@ function syncState(): void {
   levelHeight.value = board.height;
 }
 
-function drawGhost(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  size: number,
-): void {
-  const radius = size * 0.4;
-  const totalHeight = size * 0.88;
-  const top = y - totalHeight / 2;
-  const bottom = y + totalHeight / 2;
-  const left = x - radius;
-  const right = x + radius;
-  const domeCenterY = top + radius;
-
-  const feet = 3;
-  const footWidth = (radius * 2) / feet;
-  const footNotch = size * 0.14;
-
-  ctx.fillStyle = "#ffffff";
-  ctx.beginPath();
-  // Domed head: upper semicircle from left to right.
-  ctx.arc(x, domeCenterY, radius, Math.PI, 0, false);
-  // Right side straight down to the feet.
-  ctx.lineTo(right, bottom);
-  // Scalloped bottom: notch up between each foot tip.
-  for (let i = 0; i < feet; i++) {
-    const footRight = right - i * footWidth;
-    ctx.lineTo(footRight - footWidth / 2, bottom - footNotch);
-    ctx.lineTo(footRight - footWidth, bottom);
-  }
-  // Left side back up to the dome.
-  ctx.lineTo(left, domeCenterY);
-  ctx.closePath();
-  ctx.fill();
-}
-
 function playerColor(player: Player): string {
   const NORMAL = "#ffeb3b";
   const POWERED = "#e53935";
@@ -107,46 +77,6 @@ function playerColor(player: Player): string {
     return on ? NORMAL : POWERED;
   }
   return POWERED;
-}
-
-function drawPill(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  length: number,
-  thickness: number,
-): void {
-  const r = thickness / 2;
-  const left = -length / 2;
-  const right = length / 2;
-  const top = -r;
-
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate((30 * Math.PI) / 180);
-
-  // Capsule (stadium) outline, centered on the origin.
-  ctx.beginPath();
-  ctx.moveTo(left + r, top);
-  ctx.lineTo(right - r, top);
-  ctx.arc(right - r, 0, r, -Math.PI / 2, Math.PI / 2);
-  ctx.lineTo(left + r, r);
-  ctx.arc(left + r, 0, r, Math.PI / 2, -Math.PI / 2);
-  ctx.closePath();
-
-  ctx.save();
-  ctx.clip();
-  ctx.fillStyle = "#e53935";
-  ctx.fillRect(left, top, length / 2, thickness);
-  ctx.fillStyle = "#ffd54f";
-  ctx.fillRect(0, top, length / 2, thickness);
-  ctx.restore();
-
-  ctx.strokeStyle = "#1a1a1a";
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  ctx.restore();
 }
 
 function draw(ctx: CanvasRenderingContext2D): void {
@@ -188,53 +118,30 @@ function draw(ctx: CanvasRenderingContext2D): void {
     board.height * BLOCK_SIZE,
   );
 
-  ctx.fillStyle = "#ffffff";
   for (const pellet of pellets.value) {
     const x = BOARD_OFFSET + BLOCK_SIZE / 2 + toNum(pellet.x) * BLOCK_SIZE;
     const y = BOARD_OFFSET + 48 + BLOCK_SIZE / 2 + toNum(pellet.y) * BLOCK_SIZE;
-    ctx.beginPath();
-    ctx.arc(x, y, BLOCK_SIZE / 10, 0, Math.PI * 2);
-    ctx.fill();
+    drawPellet(ctx, x, y, BLOCK_SIZE);
   }
 
   for (const powerPellet of powerPellets.value) {
     const x = BOARD_OFFSET + BLOCK_SIZE / 2 + toNum(powerPellet.x) * BLOCK_SIZE;
     const y = BOARD_OFFSET + 48 + BLOCK_SIZE / 2 + toNum(powerPellet.y) * BLOCK_SIZE;
-    drawPill(ctx, x, y, BLOCK_SIZE * 0.9, BLOCK_SIZE * 0.5);
+    drawPowerPellet(ctx, x, y, BLOCK_SIZE * 0.9, BLOCK_SIZE * 0.5);
   }
 
   for (const ghost of ghosts.value) {
     const x = BOARD_OFFSET + BLOCK_SIZE / 2 + toNum(ghost.x) * BLOCK_SIZE;
     const y = BOARD_OFFSET + 48 + BLOCK_SIZE / 2 + toNum(ghost.y) * BLOCK_SIZE;
-    drawGhost(ctx, x, y, BLOCK_SIZE);
+    drawSharedGhost(ctx, x, y, BLOCK_SIZE);
   }
 
   for (const player of players.value) {
     const x = BOARD_OFFSET + BLOCK_SIZE / 2 + toNum(player.x) * BLOCK_SIZE;
     const y = BOARD_OFFSET + 48 + BLOCK_SIZE / 2 + toNum(player.y) * BLOCK_SIZE;
-    const radius = (BLOCK_SIZE / 2) * 0.9;
-
-    const openingCenter =
-      player.current === Direction.UP
-        ? -Math.PI / 2
-        : player.current === Direction.RIGHT
-          ? 0
-          : player.current === Direction.DOWN
-            ? Math.PI / 2
-            : Math.PI;
-
     const phase =
       Math.abs(toNum(frac(player.x)) + toNum(frac(player.y)) - 0.5) * 2;
-    const openingWidth = ((45 - 45 * phase) * Math.PI) / 180;
-    const startAngle = openingCenter + openingWidth;
-    const endAngle = openingCenter + Math.PI * 2 - openingWidth;
-
-    ctx.fillStyle = playerColor(player);
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.arc(x, y, radius, startAngle, endAngle);
-    ctx.closePath();
-    ctx.fill();
+    drawPlayer(ctx, x, y, BLOCK_SIZE, player.current, playerColor(player), phase);
   }
 }
 

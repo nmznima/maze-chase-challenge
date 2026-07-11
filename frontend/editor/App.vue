@@ -2,6 +2,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { generateLevel, listLevels, loadLevel, storeLevel } from "./api.ts";
 import { CellKind, type CellChange, LevelGrid, lineCells, applyChanges, setCell, SpawnDirection, warnings } from "./model.ts";
+import { drawGhost, drawPellet, drawPlayer, drawPowerPellet } from "../game/rendering.ts";
+import { Direction } from "../game/engine/board.ts";
 
 const canvas = ref<HTMLCanvasElement>();
 const viewport = ref<HTMLDivElement>();
@@ -165,8 +167,11 @@ function draw(): void {
   for (let y = top; y < bottom; y++) for (let x = left; x < right; x++) {
     const px = x * cellSize.value - host.scrollLeft, py = y * cellSize.value - host.scrollTop, kind = value.cells[value.index(x, y)]!;
     ctx.fillStyle = kind === CellKind.Wall ? "#334155" : "#0f172a"; ctx.fillRect(px, py, cellSize.value, cellSize.value);
-    if (kind === CellKind.Pellet || kind === CellKind.PowerPellet) { ctx.fillStyle = kind === CellKind.Pellet ? "#f8fafc" : "#fbbf24"; ctx.beginPath(); ctx.arc(px + cellSize.value / 2, py + cellSize.value / 2, kind === CellKind.Pellet ? Math.max(1.5, cellSize.value / 8) : Math.max(3, cellSize.value / 3), 0, Math.PI * 2); ctx.fill(); }
-    if (kind === CellKind.Player || kind === CellKind.Ghost) { ctx.fillStyle = kind === CellKind.Player ? "#fde047" : "#fb7185"; ctx.font = `${Math.max(9, cellSize.value * .72)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(kind === CellKind.Player ? "P" : "G", px + cellSize.value / 2, py + cellSize.value / 2 + 1); }
+    const centerX = px + cellSize.value / 2, centerY = py + cellSize.value / 2;
+    if (kind === CellKind.Pellet) drawPellet(ctx, centerX, centerY, cellSize.value);
+    if (kind === CellKind.PowerPellet) drawPowerPellet(ctx, centerX, centerY, cellSize.value * .9, cellSize.value * .5);
+    if (kind === CellKind.Ghost) drawGhost(ctx, centerX, centerY, cellSize.value);
+    if (kind === CellKind.Player) drawPlayer(ctx, centerX, centerY, cellSize.value, value.directions[value.index(x, y)]! as Direction, "#ffeb3b");
     if (cellSize.value >= 16) { ctx.strokeStyle = "#1e293b"; ctx.strokeRect(px, py, cellSize.value, cellSize.value); }
   }
   if (cursor.value) { const [x, y] = cursor.value; ctx.strokeStyle = "#38bdf8"; ctx.lineWidth = 2; ctx.strokeRect(x * cellSize.value - host.scrollLeft + 1, y * cellSize.value - host.scrollTop + 1, cellSize.value - 2, cellSize.value - 2); }
