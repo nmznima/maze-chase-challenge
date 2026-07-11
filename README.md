@@ -9,4 +9,6 @@ See `technical-challenge-frontend-engineer.md` for the task.
 bun install && uv sync
 uv run backend
 bun run game
+# in another terminal
+bun run editor
 ```
