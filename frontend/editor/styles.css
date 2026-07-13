@@ -32,4 +32,5 @@ header p, .hint { margin: 3px 0 0; color: #94a3b8; font-size: .8rem; }
 .world { position: relative; pointer-events: none; }
 /* The canvas transform counteracts the scroll position; the transparent world supplies native scrolling. */
 .viewport canvas { position: absolute; inset: 0; }
+.viewport canvas.overlay { pointer-events: none; }
 footer { display: flex; justify-content: space-between; gap: 20px; min-height: 34px; padding: 8px 20px; color: #fbbf24; border-top: 1px solid #1e293b; background: #0f172a; font-size: .8rem; }

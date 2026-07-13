@@ -7,6 +7,7 @@ import { Direction } from "../game/engine/board.ts";
 import ToolIcon from "./ToolIcon.vue";
 
 const canvas = ref<HTMLCanvasElement>();
+const overlay = ref<HTMLCanvasElement>();
 const viewport = ref<HTMLDivElement>();
 const grid = ref<LevelGrid | null>(null);
 const levelIds = ref<string[]>([]);
@@ -27,7 +28,6 @@ let revision = 0, acknowledgedRevision = 0, saveTimer = 0, saving = false;
 let drawing = false, previousCell: [number, number] | null = null, gesture = new Map<number, CellChange>();
 let drawScheduled = false, dirtyFull = true;
 const dirtyCells = new Set<number>();
-let prevCursorX = -1, prevCursorY = -1;
 
 const labels: Record<CellKind, string> = {
   [CellKind.Empty]: "Erase", [CellKind.Wall]: "Wall", [CellKind.Pellet]: "Pellet",
@@ -166,24 +166,30 @@ function paint(x: number, y: number, selectedTool = tool.value): void {
   const existing = gesture.get(change.index);
   gesture.set(change.index, existing ? { ...change, before: existing.before, beforeDirection: existing.beforeDirection } : change);
 }
-function dirtyCursor(cell: [number, number] | null): void {
-  const value = grid.value; if (!value) return;
-  if (prevCursorX >= 0 && prevCursorY >= 0) dirtyCells.add(value.index(prevCursorX, prevCursorY));
-  if (cell) { dirtyCells.add(value.index(cell[0], cell[1])); prevCursorX = cell[0]; prevCursorY = cell[1]; }
-  else { prevCursorX = -1; prevCursorY = -1; }
+function drawOverlay(): void {
+  const el = overlay.value, host = viewport.value; if (!el || !host) return;
+  const ratio = window.devicePixelRatio || 1, width = host.clientWidth, height = host.clientHeight;
+  if (el.width !== width * ratio || el.height !== height * ratio) { el.width = width * ratio; el.height = height * ratio; el.style.width = `${width}px`; el.style.height = `${height}px`; }
+  el.style.transform = `translate(${host.scrollLeft}px, ${host.scrollTop}px)`;
+  const ctx = el.getContext("2d"); if (!ctx) return;
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0); ctx.clearRect(0, 0, width, height);
+  if (!cursor.value) return;
+  const [x, y] = cursor.value, cs = cellSize.value;
+  ctx.strokeStyle = "#38bdf8"; ctx.lineWidth = 2;
+  ctx.strokeRect(x * cs - host.scrollLeft + 1, y * cs - host.scrollTop + 1, cs - 2, cs - 2);
 }
 function onPointerDown(event: PointerEvent): void {
   if (event.button !== 0 && event.button !== 2) return;
   const cell = point(event); if (!cell) return;
   event.preventDefault(); drawing = true; gesture.clear(); previousCell = cell;
   paint(cell[0], cell[1], event.button === 2 ? CellKind.Empty : tool.value);
-  dirtyCursor(cell); cursor.value = cell; scheduleFrame();
+  cursor.value = cell; drawOverlay(); scheduleFrame();
   viewport.value?.setPointerCapture(event.pointerId);
 }
 function onPointerMove(event: PointerEvent): void {
   const cell = point(event);
-  dirtyCursor(cell); cursor.value = cell;
-  if (!drawing || !cell || !previousCell) { scheduleFrame(); return; }
+  cursor.value = cell; drawOverlay();
+  if (!drawing || !cell || !previousCell) return;
   for (const [x, y] of lineCells(previousCell[0], previousCell[1], cell[0], cell[1])) paint(x, y, event.buttons === 2 ? CellKind.Empty : tool.value);
   previousCell = cell; scheduleFrame();
 }
@@ -213,13 +219,6 @@ function renderCell(ctx: CanvasRenderingContext2D, value: LevelGrid, x: number, 
   if (cs >= 16) { ctx.strokeStyle = "#1e293b"; ctx.strokeRect(px, py, cs, cs); }
 }
 
-function renderCursor(ctx: CanvasRenderingContext2D, scrollLeft: number, scrollTop: number, cs: number): void {
-  if (!cursor.value) return;
-  const [x, y] = cursor.value;
-  ctx.strokeStyle = "#38bdf8"; ctx.lineWidth = 2;
-  ctx.strokeRect(x * cs - scrollLeft + 1, y * cs - scrollTop + 1, cs - 2, cs - 2);
-}
-
 function render(): void {
   drawScheduled = false;
   const element = canvas.value, host = viewport.value, value = grid.value; if (!element || !host || !value) return;
@@ -236,7 +235,7 @@ function render(): void {
     const left = Math.max(0, Math.floor(scrollLeft / cs)), top = Math.max(0, Math.floor(scrollTop / cs));
     const right = Math.min(value.width, Math.ceil((scrollLeft + width) / cs)), bottom = Math.min(value.height, Math.ceil((scrollTop + height) / cs));
     for (let y = top; y < bottom; y++) for (let x = left; x < right; x++) renderCell(ctx, value, x, y, scrollLeft, scrollTop, cs);
-    renderCursor(ctx, scrollLeft, scrollTop, cs);
+    drawOverlay();
     return;
   }
 
@@ -248,7 +247,6 @@ function render(): void {
       if (x >= left && x < right && y >= top && y < bottom) renderCell(ctx, value, x, y, scrollLeft, scrollTop, cs);
     }
     dirtyCells.clear();
-    renderCursor(ctx, scrollLeft, scrollTop, cs);
   }
 }
 function keyboard(event: KeyboardEvent): void {
@@ -290,7 +288,7 @@ onBeforeUnmount(() => { window.clearTimeout(saveTimer); worker.terminate(); wind
       <p class="ribbon-hint">Drag to paint · Right-click erases · ⌘/Ctrl+S saves</p>
     </section>
     <section class="workspace">
-      <div ref="viewport" class="viewport" @scroll="draw" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointerup="finishGesture" @pointercancel="finishGesture" @contextmenu.prevent><div class="world" :style="worldStyle"></div><canvas ref="canvas"></canvas></div>
+      <div ref="viewport" class="viewport" @scroll="draw" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointerup="finishGesture" @pointercancel="finishGesture" @contextmenu.prevent><div class="world" :style="worldStyle"></div><canvas ref="canvas"></canvas><canvas ref="overlay" class="overlay"></canvas></div>
     </section>
     <footer v-if="message || warningText.length"><span v-if="message">{{ message }}</span><span v-if="warningText.length">Warnings: {{ warningText.join(" · ") }}</span></footer>
   </main>
