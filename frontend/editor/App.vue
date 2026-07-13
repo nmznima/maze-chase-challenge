@@ -21,6 +21,7 @@ const seed = ref(42);
 const size = ref(31);
 const saveState = ref<"loading" | "saved" | "saving" | "unsaved" | "offline" | "conflict">("loading");
 const message = ref("");
+const showGenerateModal = ref(false);
 const cursor = ref<[number, number] | null>(null);
 const undoStack: CellChange[][] = [];
 const redoStack: CellChange[][] = [];
@@ -123,6 +124,7 @@ async function openLevel(id = selectedLevel.value): Promise<void> {
 }
 async function generate(): Promise<void> {
   if (!Number.isInteger(size.value) || size.value < 15 || size.value > 1000) { message.value = "Size must be an integer from 15 to 1000."; return; }
+  showGenerateModal.value = false;
   saveState.value = "loading"; message.value = "Generating level…";
   try { const result = await generateLevel(seed.value, size.value); selectedLevel.value = ""; await install(result.ascii2d); message.value = "Generated draft — save to create it."; saveState.value = "unsaved"; }
   catch (error) { saveState.value = "offline"; message.value = error instanceof Error ? error.message : "Could not generate level"; }
@@ -276,6 +278,7 @@ function render(): void {
   }
 }
 function keyboard(event: KeyboardEvent): void {
+  if (event.key === "Escape" && showGenerateModal.value) { showGenerateModal.value = false; return; }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") { event.preventDefault(); event.shiftKey ? redo() : undo(); }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "y") { event.preventDefault(); redo(); }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") { event.preventDefault(); void save(); }
@@ -287,13 +290,18 @@ onBeforeUnmount(() => { window.clearTimeout(saveTimer); worker.terminate(); wind
 
 <template>
   <main>
-    <header><div><h1>Maze Chase editor</h1><p>{{ dimensions }} · {{ cursor ? `${cursor[0]}, ${cursor[1]}` : "Move over the board" }}</p></div><div class="status" :data-state="saveState">{{ saveState }}</div></header>
-    <section class="project-bar">
-      <label>Level <select v-model="selectedLevel" @change="openLevel()"><option v-for="id in levelIds" :key="id" :value="id">{{ id === "classic" ? "classic" : id.slice(0, 8) }}</option></select></label>
-      <button @click="openLevel()">Reload server</button><button @click="save" :disabled="saveState === 'saving' || saveState === 'conflict'">Save</button>
-      <label>Seed <input v-model.number="seed" type="number" /></label><label>Size <input v-model.number="size" type="number" min="15" max="1000" /></label><button @click="generate">Generate draft</button>
-    </section>
+    <header><h1>Maze Chase Editor</h1><p class="header-info">Size: {{ dimensions }} | Position: {{ cursor ? `${cursor[0]}, ${cursor[1]}` : "—" }}</p></header>
     <section class="ribbon" aria-label="Editing tools">
+      <div class="ribbon-group">
+        <span class="ribbon-title">Level</span>
+        <div class="level-controls">
+          <select v-model="selectedLevel" @change="openLevel()"><option v-for="id in levelIds" :key="id" :value="id">{{ id === "classic" ? "classic" : id.slice(0, 8) }}</option></select>
+          <div class="level-buttons">
+            <button @click="openLevel()">Reload</button><button @click="save" :disabled="saveState === 'saving' || saveState === 'conflict'">Save</button>
+          </div>
+          <div class="status" :data-state="saveState">{{ saveState }}</div>
+        </div>
+      </div>
       <div class="ribbon-group">
         <span class="ribbon-title">Tiles</span>
         <button v-for="item in toolList" :key="item" class="tool-button" :class="{ active: tool === item }" :aria-pressed="tool === item" @click="tool = item">
@@ -310,13 +318,28 @@ onBeforeUnmount(() => { window.clearTimeout(saveTimer); worker.terminate(); wind
       </div>
       <div class="ribbon-group">
         <span class="ribbon-title">Zoom</span>
-        <button class="command-button" @click="cellSize = Math.max(8, cellSize - 4); clampPan(); draw()">−<span>Out</span></button><button class="command-button" @click="cellSize = Math.min(40, cellSize + 4); clampPan(); draw()">+<span>In</span></button><span class="zoom-readout">{{ cellSize }}px</span>
+        <button class="command-button" @click="cellSize = Math.max(8, cellSize - 4); clampPan(); draw()"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="22" height="22"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607ZM13.5 10.5h-6" /></svg><span>Out</span></button><button class="command-button" @click="cellSize = Math.min(40, cellSize + 4); clampPan(); draw()"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="22" height="22"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607ZM10.5 7.5v6m3-3h-6" /></svg><span>In</span></button><span class="zoom-readout">{{ cellSize }}px</span>
       </div>
-      <p class="ribbon-hint">Drag to paint · Right-click erases · Scroll to pan · ⌘/Ctrl+S saves</p>
+      <div class="ribbon-group">
+        <span class="ribbon-title">Generate</span>
+        <button class="command-button" @click="showGenerateModal = true">+<span>New Map</span></button>
+      </div>
+      <p class="ribbon-info">Drag to paint · Right-click erases · Scroll to pan · ⌘S saves</p>
     </section>
     <section class="workspace">
       <div ref="viewport" class="viewport" @wheel="onWheel" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointerup="finishGesture" @pointercancel="finishGesture" @contextmenu.prevent><canvas ref="canvas"></canvas><canvas ref="overlay" class="overlay"></canvas></div>
     </section>
     <footer v-if="message || warningText.length"><span v-if="message">{{ message }}</span><span v-if="warningText.length">Warnings: {{ warningText.join(" · ") }}</span></footer>
+    <div v-if="showGenerateModal" class="modal-backdrop" @click.self="showGenerateModal = false">
+      <div class="modal">
+        <h2>Generate New Map</h2>
+        <label>Seed <input v-model.number="seed" type="number" /></label>
+        <label>Size <input v-model.number="size" type="number" min="15" max="1000" /></label>
+        <div class="modal-actions">
+          <button @click="generate">Generate</button>
+          <button @click="showGenerateModal = false">Cancel</button>
+        </div>
+      </div>
+    </div>
   </main>
 </template>
