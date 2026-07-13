@@ -266,8 +266,9 @@ function keyboard(event: KeyboardEvent): void {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "y") { event.preventDefault(); redo(); }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") { event.preventDefault(); void save(); }
 }
-onMounted(async () => { window.addEventListener("keydown", keyboard); window.addEventListener("resize", draw); try { await refreshLevels(); } catch { /* opening the classic level will show the connection error */ } await openLevel("classic"); });
-onBeforeUnmount(() => { window.clearTimeout(saveTimer); worker.terminate(); window.removeEventListener("keydown", keyboard); window.removeEventListener("resize", draw); });
+function beforeUnload(event: BeforeUnloadEvent): void { if (saveState.value === "unsaved" || saveState.value === "saving") event.preventDefault(); }
+onMounted(async () => { window.addEventListener("keydown", keyboard); window.addEventListener("resize", draw); window.addEventListener("beforeunload", beforeUnload); try { await refreshLevels(); } catch { /* opening the classic level will show the connection error */ } await openLevel("classic"); });
+onBeforeUnmount(() => { window.clearTimeout(saveTimer); worker.terminate(); window.removeEventListener("keydown", keyboard); window.removeEventListener("resize", draw); window.removeEventListener("beforeunload", beforeUnload); });
 </script>
 
 <template>
