@@ -4,6 +4,7 @@ import { generateLevel, listLevels, loadLevel, storeLevel } from "./api.ts";
 import { CellKind, type CellChange, LevelGrid, lineCells, applyChanges, setCell, SpawnDirection, warnings } from "./model.ts";
 import { drawGhost, drawPellet, drawPlayer, drawPowerPellet } from "../game/rendering.ts";
 import { Direction } from "../game/engine/board.ts";
+import ToolIcon from "./ToolIcon.vue";
 
 const canvas = ref<HTMLCanvasElement>();
 const viewport = ref<HTMLDivElement>();
@@ -188,13 +189,33 @@ onBeforeUnmount(() => { window.clearTimeout(saveTimer); worker.terminate(); wind
 <template>
   <main>
     <header><div><h1>Maze Chase editor</h1><p>{{ dimensions }} · {{ cursor ? `${cursor[0]}, ${cursor[1]}` : "Move over the board" }}</p></div><div class="status" :data-state="saveState">{{ saveState }}</div></header>
-    <section class="toolbar">
+    <section class="project-bar">
       <label>Level <select v-model="selectedLevel" @change="openLevel()"><option v-for="id in levelIds" :key="id" :value="id">{{ id === "classic" ? "classic" : id.slice(0, 8) }}</option></select></label>
       <button @click="openLevel()">Reload server</button><button @click="save" :disabled="saveState === 'saving' || saveState === 'conflict'">Save</button>
       <label>Seed <input v-model.number="seed" type="number" /></label><label>Size <input v-model.number="size" type="number" min="15" max="1000" /></label><button @click="generate">Generate draft</button>
     </section>
+    <section class="ribbon" aria-label="Editing tools">
+      <div class="ribbon-group">
+        <span class="ribbon-title">Tiles</span>
+        <button v-for="item in toolList" :key="item" class="tool-button" :class="{ active: tool === item }" :aria-pressed="tool === item" @click="tool = item">
+          <ToolIcon :kind="item" :direction="direction" /><span>{{ labels[item] }}</span>
+        </button>
+      </div>
+      <div v-if="tool === CellKind.Player || tool === CellKind.Ghost" class="ribbon-group">
+        <span class="ribbon-title">Spawn direction</span>
+        <button v-for="(name, value) in ['↑','→','↓','←']" :key="name" class="direction-button" :class="{ active: direction === value }" :aria-label="`Face ${name}`" @click="direction = value">{{ name }}</button>
+      </div>
+      <div class="ribbon-group">
+        <span class="ribbon-title">History</span>
+        <button class="command-button" :disabled="!canUndo" @click="undo">↶<span>Undo</span></button><button class="command-button" :disabled="!canRedo" @click="redo">↷<span>Redo</span></button>
+      </div>
+      <div class="ribbon-group">
+        <span class="ribbon-title">Zoom</span>
+        <button class="command-button" @click="cellSize = Math.max(8, cellSize - 4); draw()">−<span>Out</span></button><button class="command-button" @click="cellSize = Math.min(40, cellSize + 4); draw()">+<span>In</span></button><span class="zoom-readout">{{ cellSize }}px</span>
+      </div>
+      <p class="ribbon-hint">Drag to paint · Right-click erases · ⌘/Ctrl+S saves</p>
+    </section>
     <section class="workspace">
-      <aside><h2>Paint</h2><button v-for="item in toolList" :key="item" :class="{ active: tool === item }" @click="tool = item">{{ labels[item] }}</button><template v-if="tool === CellKind.Player || tool === CellKind.Ghost"><h2>Direction</h2><div class="directions"><button v-for="(name, value) in ['↑','→','↓','←']" :key="name" :class="{ active: direction === value }" @click="direction = value">{{ name }}</button></div></template><h2>History</h2><button :disabled="!canUndo" @click="undo">Undo</button><button :disabled="!canRedo" @click="redo">Redo</button><h2>Zoom</h2><div class="zoom"><button @click="cellSize = Math.max(8, cellSize - 4); draw()">−</button><span>{{ cellSize }}px</span><button @click="cellSize = Math.min(40, cellSize + 4); draw()">+</button></div><p class="hint">Drag to paint. Right-click erases. ⌘/Ctrl+S saves.</p></aside>
       <div ref="viewport" class="viewport" @scroll="draw" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointerup="finishGesture" @pointercancel="finishGesture" @contextmenu.prevent><div class="world" :style="worldStyle"></div><canvas ref="canvas"></canvas></div>
     </section>
     <footer v-if="message || warningText.length"><span v-if="message">{{ message }}</span><span v-if="warningText.length">Warnings: {{ warningText.join(" · ") }}</span></footer>

@@ -1,24 +1,34 @@
 :root { color: #e2e8f0; background: #020617; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 760px; }
+html, body, #app { height: 100%; }
+body { margin: 0; min-width: 760px; overflow: hidden; }
 button, input, select { font: inherit; }
 button { border: 1px solid #334155; border-radius: 6px; padding: 7px 9px; color: #e2e8f0; background: #172033; cursor: pointer; }
 button:hover:not(:disabled), button.active { background: #075985; border-color: #38bdf8; }
 button:disabled { cursor: not-allowed; opacity: .45; }
 input, select { border: 1px solid #475569; border-radius: 5px; padding: 6px; color: inherit; background: #0f172a; }
 input[type=number] { width: 78px; }
-main { min-height: 100vh; display: grid; grid-template-rows: auto auto 1fr auto; }
+main { height: 100%; min-height: 100vh; display: grid; grid-template-rows: auto auto auto 1fr auto; }
 header { display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; border-bottom: 1px solid #1e293b; background: #0f172a; }
 h1 { margin: 0; font-size: 1.15rem; } h2 { margin: 14px 0 6px; font-size: .75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: .08em; }
 header p, .hint { margin: 3px 0 0; color: #94a3b8; font-size: .8rem; }
 .status { border-radius: 999px; padding: 5px 10px; font-size: .78rem; text-transform: capitalize; background: #334155; }
 .status[data-state=saved] { background: #166534; } .status[data-state=saving], .status[data-state=loading] { background: #854d0e; } .status[data-state=offline], .status[data-state=conflict] { background: #991b1b; }
-.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 20px; border-bottom: 1px solid #1e293b; background: #111827; }
-.toolbar label { display: flex; align-items: center; gap: 5px; color: #cbd5e1; font-size: .82rem; }
-.workspace { min-height: 0; display: grid; grid-template-columns: 155px minmax(0, 1fr); }
-aside { padding: 10px; border-right: 1px solid #1e293b; background: #0f172a; } aside > button { width: 100%; margin: 2px 0; text-align: left; }
-.directions, .zoom { display: flex; gap: 4px; } .directions button { flex: 1; } .zoom { align-items: center; } .zoom span { min-width: 40px; text-align: center; font-size: .8rem; }
-.viewport { position: relative; overflow: auto; min-height: 500px; background: #111827; cursor: crosshair; }
+.project-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 20px; border-bottom: 1px solid #1e293b; background: #111827; }
+.project-bar label { display: flex; align-items: center; gap: 5px; color: #cbd5e1; font-size: .82rem; }
+.ribbon { display: flex; align-items: stretch; gap: 0; min-height: 87px; overflow-x: auto; padding: 7px 20px 0; border-bottom: 1px solid #334155; background: #0f172a; }
+.ribbon-group { position: relative; display: flex; align-items: flex-start; gap: 3px; min-width: max-content; padding: 2px 11px 20px 0; margin-right: 11px; border-right: 1px solid #334155; }
+.ribbon-group:last-of-type { border-right: 0; }
+.ribbon-title { position: absolute; right: 11px; bottom: 2px; left: 0; color: #94a3b8; font-size: .66rem; text-align: center; }
+.tool-button, .command-button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 62px; height: 58px; padding: 3px 6px; font-size: .68rem; }
+.tool-button canvas { width: 35px; height: 35px; }
+.command-button { min-width: 45px; font-size: 1.35rem; line-height: 1; }
+.command-button span { font-size: .66rem; }
+.direction-button { width: 34px; height: 42px; padding: 3px; font-size: 1.25rem; }
+.zoom-readout { align-self: center; min-width: 42px; padding-top: 5px; color: #cbd5e1; font-size: .76rem; text-align: center; }
+.ribbon-hint { align-self: center; min-width: max-content; margin: 0 0 17px auto; padding-left: 10px; color: #94a3b8; font-size: .75rem; }
+.workspace { min-height: 0; }
+.viewport { position: relative; overflow: auto; height: 100%; min-height: 0; background: #111827; cursor: crosshair; }
 .world { position: relative; pointer-events: none; }
 /* The canvas transform counteracts the scroll position; the transparent world supplies native scrolling. */
 .viewport canvas { position: absolute; inset: 0; }
