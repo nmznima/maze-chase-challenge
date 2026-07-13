@@ -213,6 +213,20 @@ function finishGesture(): void {
 }
 function undo(): void { const changes = undoStack.pop(); if (!changes || !grid.value) return; applyChanges(grid.value, changes, true); for (const c of changes) adjustCounts(c.after, c.before); redoStack.push(changes); markChanged(); }
 function redo(): void { const changes = redoStack.pop(); if (!changes || !grid.value) return; applyChanges(grid.value, changes); for (const c of changes) adjustCounts(c.before, c.after); undoStack.push(changes); markChanged(); }
+function clearMap(): void {
+  const value = grid.value; if (!value) return;
+  const changes: CellChange[] = [];
+  for (let i = 0; i < value.cells.length; i++) {
+    const before = value.cells[i]!, beforeDir = value.directions[i]!;
+    if (before === CellKind.Empty && beforeDir === 0) continue;
+    changes.push({ index: i, before, beforeDirection: beforeDir, after: CellKind.Empty, afterDirection: 0 });
+    value.cells[i] = CellKind.Empty; value.directions[i] = 0;
+  }
+  if (!changes.length) return;
+  for (const c of changes) adjustCounts(c.before, c.after);
+  undoStack.push(changes); if (undoStack.length > 80) undoStack.shift(); redoStack.length = 0;
+  markChanged();
+}
 
 function draw(): void { dirtyFull = true; scheduleFrame(); }
 function scheduleFrame(): void {
@@ -292,7 +306,7 @@ onBeforeUnmount(() => { window.clearTimeout(saveTimer); worker.terminate(); wind
       </div>
       <div class="ribbon-group">
         <span class="ribbon-title">History</span>
-        <button class="command-button" :disabled="!canUndo" @click="undo">↶<span>Undo</span></button><button class="command-button" :disabled="!canRedo" @click="redo">↷<span>Redo</span></button>
+        <button class="command-button" :disabled="!canUndo" @click="undo">↶<span>Undo</span></button><button class="command-button" :disabled="!canRedo" @click="redo">↷<span>Redo</span></button><button class="command-button" @click="clearMap">✕<span>Clear</span></button>
       </div>
       <div class="ribbon-group">
         <span class="ribbon-title">Zoom</span>
