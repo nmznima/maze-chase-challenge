@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { generateLevel, listLevels, loadLevel, storeLevel } from "./api.ts";
-import { CellKind, type CellChange, LevelGrid, lineCells, applyChanges, setCell, SpawnDirection, warnings } from "./model.ts";
+import { CellKind, type CellChange, LevelGrid, lineCells, applyChanges, setCell, SpawnDirection } from "./model.ts";
 import { drawGhost, drawPellet, drawPlayer, drawPowerPellet } from "../game/rendering.ts";
 import { Direction } from "../game/engine/board.ts";
 import ToolIcon from "./ToolIcon.vue";
@@ -24,14 +24,24 @@ const cursor = ref<[number, number] | null>(null);
 const undoStack: CellChange[][] = [];
 const redoStack: CellChange[][] = [];
 let revision = 0, acknowledgedRevision = 0, saveTimer = 0, saving = false;
-let drawing = false, previousCell: [number, number] | null = null, gesture = new Map<number, CellChange>(), drawScheduled = false;
+let drawing = false, previousCell: [number, number] | null = null, gesture = new Map<number, CellChange>();
+let drawScheduled = false, dirtyFull = true;
+const dirtyCells = new Set<number>();
+let prevCursorX = -1, prevCursorY = -1;
 
 const labels: Record<CellKind, string> = {
   [CellKind.Empty]: "Erase", [CellKind.Wall]: "Wall", [CellKind.Pellet]: "Pellet",
   [CellKind.PowerPellet]: "Power pellet", [CellKind.Player]: "Player", [CellKind.Ghost]: "Ghost",
 };
 const toolList = [CellKind.Wall, CellKind.Empty, CellKind.Pellet, CellKind.PowerPellet, CellKind.Player, CellKind.Ghost];
-const warningText = computed(() => grid.value ? warnings(grid.value) : []);
+const playerCount = ref(0);
+const pelletCount = ref(0);
+const warningText = computed(() => {
+  const result: string[] = [];
+  if (playerCount.value === 0) result.push("No player spawn");
+  if (pelletCount.value === 0) result.push("No pellets");
+  return result;
+});
 const dimensions = computed(() => grid.value ? `${grid.value.width} × ${grid.value.height}` : "—");
 const worldStyle = computed(() => grid.value ? { width: `${grid.value.width * cellSize.value}px`, height: `${grid.value.height * cellSize.value}px` } : {});
 const canUndo = computed(() => undoStack.length > 0);
@@ -66,8 +76,25 @@ function encode(value: LevelGrid): Promise<string> {
   });
 }
 
+function recount(g: LevelGrid): void {
+  let players = 0, pellets = 0;
+  for (const kind of g.cells) {
+    if (kind === CellKind.Player) players++;
+    if (kind === CellKind.Pellet || kind === CellKind.PowerPellet) pellets++;
+  }
+  playerCount.value = players; pelletCount.value = pellets;
+}
+function adjustCounts(before: number, after: number): void {
+  if (before === after) return;
+  if (before === CellKind.Player) playerCount.value--;
+  else if (before === CellKind.Pellet || before === CellKind.PowerPellet) pelletCount.value--;
+  if (after === CellKind.Player) playerCount.value++;
+  else if (after === CellKind.Pellet || after === CellKind.PowerPellet) pelletCount.value++;
+}
+
 async function install(text: string, identity?: { id: string; version: number }): Promise<void> {
   grid.value = await decode(text);
+  recount(grid.value);
   levelId.value = identity?.id; version.value = identity?.version;
   revision = 0; acknowledgedRevision = 0; undoStack.length = 0; redoStack.length = 0;
   saveState.value = "saved"; message.value = "";
@@ -134,54 +161,95 @@ function paint(x: number, y: number, selectedTool = tool.value): void {
   const value = grid.value; if (!value) return;
   const change = setCell(value, x, y, selectedTool, direction.value);
   if (!change) return;
+  adjustCounts(change.before, change.after);
+  dirtyCells.add(change.index);
   const existing = gesture.get(change.index);
   gesture.set(change.index, existing ? { ...change, before: existing.before, beforeDirection: existing.beforeDirection } : change);
+}
+function dirtyCursor(cell: [number, number] | null): void {
+  const value = grid.value; if (!value) return;
+  if (prevCursorX >= 0 && prevCursorY >= 0) dirtyCells.add(value.index(prevCursorX, prevCursorY));
+  if (cell) { dirtyCells.add(value.index(cell[0], cell[1])); prevCursorX = cell[0]; prevCursorY = cell[1]; }
+  else { prevCursorX = -1; prevCursorY = -1; }
 }
 function onPointerDown(event: PointerEvent): void {
   if (event.button !== 0 && event.button !== 2) return;
   const cell = point(event); if (!cell) return;
   event.preventDefault(); drawing = true; gesture.clear(); previousCell = cell;
-  paint(cell[0], cell[1], event.button === 2 ? CellKind.Empty : tool.value); viewport.value?.setPointerCapture(event.pointerId); draw();
+  paint(cell[0], cell[1], event.button === 2 ? CellKind.Empty : tool.value);
+  dirtyCursor(cell); cursor.value = cell; scheduleFrame();
+  viewport.value?.setPointerCapture(event.pointerId);
 }
 function onPointerMove(event: PointerEvent): void {
-  const cell = point(event); cursor.value = cell; if (!drawing || !cell || !previousCell) { draw(); return; }
+  const cell = point(event);
+  dirtyCursor(cell); cursor.value = cell;
+  if (!drawing || !cell || !previousCell) { scheduleFrame(); return; }
   for (const [x, y] of lineCells(previousCell[0], previousCell[1], cell[0], cell[1])) paint(x, y, event.buttons === 2 ? CellKind.Empty : tool.value);
-  previousCell = cell; draw();
+  previousCell = cell; scheduleFrame();
 }
 function finishGesture(): void {
   if (!drawing) return; drawing = false; previousCell = null;
   const changes = [...gesture.values()]; gesture.clear();
   if (changes.length) { undoStack.push(changes); if (undoStack.length > 80) undoStack.shift(); redoStack.length = 0; markChanged(); }
 }
-function undo(): void { const changes = undoStack.pop(); if (!changes || !grid.value) return; applyChanges(grid.value, changes, true); redoStack.push(changes); markChanged(); }
-function redo(): void { const changes = redoStack.pop(); if (!changes || !grid.value) return; applyChanges(grid.value, changes); undoStack.push(changes); markChanged(); }
+function undo(): void { const changes = undoStack.pop(); if (!changes || !grid.value) return; applyChanges(grid.value, changes, true); for (const c of changes) adjustCounts(c.after, c.before); redoStack.push(changes); markChanged(); }
+function redo(): void { const changes = redoStack.pop(); if (!changes || !grid.value) return; applyChanges(grid.value, changes); for (const c of changes) adjustCounts(c.before, c.after); undoStack.push(changes); markChanged(); }
 
-function draw(): void {
+function draw(): void { dirtyFull = true; scheduleFrame(); }
+function scheduleFrame(): void {
   if (drawScheduled) return;
   drawScheduled = true;
   requestAnimationFrame(render);
 }
+
+function renderCell(ctx: CanvasRenderingContext2D, value: LevelGrid, x: number, y: number, scrollLeft: number, scrollTop: number, cs: number): void {
+  const px = x * cs - scrollLeft, py = y * cs - scrollTop, kind = value.cells[value.index(x, y)]!;
+  ctx.fillStyle = kind === CellKind.Wall ? "#334155" : "#0f172a"; ctx.fillRect(px, py, cs, cs);
+  const centerX = px + cs / 2, centerY = py + cs / 2;
+  if (kind === CellKind.Pellet) drawPellet(ctx, centerX, centerY, cs);
+  if (kind === CellKind.PowerPellet) drawPowerPellet(ctx, centerX, centerY, cs * .9, cs * .5);
+  if (kind === CellKind.Ghost) drawGhost(ctx, centerX, centerY, cs);
+  if (kind === CellKind.Player) drawPlayer(ctx, centerX, centerY, cs, value.directions[value.index(x, y)]! as Direction, "#ffeb3b");
+  if (cs >= 16) { ctx.strokeStyle = "#1e293b"; ctx.strokeRect(px, py, cs, cs); }
+}
+
+function renderCursor(ctx: CanvasRenderingContext2D, scrollLeft: number, scrollTop: number, cs: number): void {
+  if (!cursor.value) return;
+  const [x, y] = cursor.value;
+  ctx.strokeStyle = "#38bdf8"; ctx.lineWidth = 2;
+  ctx.strokeRect(x * cs - scrollLeft + 1, y * cs - scrollTop + 1, cs - 2, cs - 2);
+}
+
 function render(): void {
   drawScheduled = false;
   const element = canvas.value, host = viewport.value, value = grid.value; if (!element || !host || !value) return;
   const ratio = window.devicePixelRatio || 1, width = host.clientWidth, height = host.clientHeight;
-  if (element.width !== width * ratio || element.height !== height * ratio) { element.width = width * ratio; element.height = height * ratio; element.style.width = `${width}px`; element.style.height = `${height}px`; }
-  element.style.transform = `translate(${host.scrollLeft}px, ${host.scrollTop}px)`;
+  const cs = cellSize.value, scrollLeft = host.scrollLeft, scrollTop = host.scrollTop;
+  if (element.width !== width * ratio || element.height !== height * ratio) { element.width = width * ratio; element.height = height * ratio; element.style.width = `${width}px`; element.style.height = `${height}px`; dirtyFull = true; }
+  element.style.transform = `translate(${scrollLeft}px, ${scrollTop}px)`;
   const ctx = element.getContext("2d"); if (!ctx) return;
-  ctx.setTransform(ratio, 0, 0, ratio, 0, 0); ctx.fillStyle = "#111827"; ctx.fillRect(0, 0, width, height);
-  const left = Math.max(0, Math.floor(host.scrollLeft / cellSize.value)), top = Math.max(0, Math.floor(host.scrollTop / cellSize.value));
-  const right = Math.min(value.width, Math.ceil((host.scrollLeft + width) / cellSize.value)), bottom = Math.min(value.height, Math.ceil((host.scrollTop + height) / cellSize.value));
-  for (let y = top; y < bottom; y++) for (let x = left; x < right; x++) {
-    const px = x * cellSize.value - host.scrollLeft, py = y * cellSize.value - host.scrollTop, kind = value.cells[value.index(x, y)]!;
-    ctx.fillStyle = kind === CellKind.Wall ? "#334155" : "#0f172a"; ctx.fillRect(px, py, cellSize.value, cellSize.value);
-    const centerX = px + cellSize.value / 2, centerY = py + cellSize.value / 2;
-    if (kind === CellKind.Pellet) drawPellet(ctx, centerX, centerY, cellSize.value);
-    if (kind === CellKind.PowerPellet) drawPowerPellet(ctx, centerX, centerY, cellSize.value * .9, cellSize.value * .5);
-    if (kind === CellKind.Ghost) drawGhost(ctx, centerX, centerY, cellSize.value);
-    if (kind === CellKind.Player) drawPlayer(ctx, centerX, centerY, cellSize.value, value.directions[value.index(x, y)]! as Direction, "#ffeb3b");
-    if (cellSize.value >= 16) { ctx.strokeStyle = "#1e293b"; ctx.strokeRect(px, py, cellSize.value, cellSize.value); }
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+
+  if (dirtyFull) {
+    dirtyFull = false; dirtyCells.clear();
+    ctx.fillStyle = "#111827"; ctx.fillRect(0, 0, width, height);
+    const left = Math.max(0, Math.floor(scrollLeft / cs)), top = Math.max(0, Math.floor(scrollTop / cs));
+    const right = Math.min(value.width, Math.ceil((scrollLeft + width) / cs)), bottom = Math.min(value.height, Math.ceil((scrollTop + height) / cs));
+    for (let y = top; y < bottom; y++) for (let x = left; x < right; x++) renderCell(ctx, value, x, y, scrollLeft, scrollTop, cs);
+    renderCursor(ctx, scrollLeft, scrollTop, cs);
+    return;
   }
-  if (cursor.value) { const [x, y] = cursor.value; ctx.strokeStyle = "#38bdf8"; ctx.lineWidth = 2; ctx.strokeRect(x * cellSize.value - host.scrollLeft + 1, y * cellSize.value - host.scrollTop + 1, cellSize.value - 2, cellSize.value - 2); }
+
+  if (dirtyCells.size > 0) {
+    const left = Math.floor(scrollLeft / cs), top = Math.floor(scrollTop / cs);
+    const right = Math.ceil((scrollLeft + width) / cs), bottom = Math.ceil((scrollTop + height) / cs);
+    for (const idx of dirtyCells) {
+      const x = idx % value.width, y = (idx - x) / value.width;
+      if (x >= left && x < right && y >= top && y < bottom) renderCell(ctx, value, x, y, scrollLeft, scrollTop, cs);
+    }
+    dirtyCells.clear();
+    renderCursor(ctx, scrollLeft, scrollTop, cs);
+  }
 }
 function keyboard(event: KeyboardEvent): void {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") { event.preventDefault(); event.shiftKey ? redo() : undo(); }
