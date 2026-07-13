@@ -28,9 +28,7 @@ header p, .hint { margin: 3px 0 0; color: #94a3b8; font-size: .8rem; }
 .zoom-readout { align-self: center; min-width: 42px; padding-top: 5px; color: #cbd5e1; font-size: .76rem; text-align: center; }
 .ribbon-hint { align-self: center; min-width: max-content; margin: 0 0 17px auto; padding-left: 10px; color: #94a3b8; font-size: .75rem; }
 .workspace { min-height: 0; }
-.viewport { position: relative; overflow: auto; height: 100%; min-height: 0; background: #111827; cursor: crosshair; }
-.world { position: relative; pointer-events: none; }
-/* The canvas transform counteracts the scroll position; the transparent world supplies native scrolling. */
+.viewport { position: relative; overflow: hidden; height: 100%; min-height: 0; background: #111827; cursor: crosshair; }
 .viewport canvas { position: absolute; inset: 0; }
 .viewport canvas.overlay { pointer-events: none; }
 footer { display: flex; justify-content: space-between; gap: 20px; min-height: 34px; padding: 8px 20px; color: #fbbf24; border-top: 1px solid #1e293b; background: #0f172a; font-size: .8rem; }

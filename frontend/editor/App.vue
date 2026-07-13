@@ -28,6 +28,7 @@ let revision = 0, acknowledgedRevision = 0, saveTimer = 0, saving = false;
 let drawing = false, previousCell: [number, number] | null = null, gesture = new Map<number, CellChange>();
 let drawScheduled = false, dirtyFull = true;
 const dirtyCells = new Set<number>();
+let panX = 0, panY = 0;
 
 const labels: Record<CellKind, string> = {
   [CellKind.Empty]: "Erase", [CellKind.Wall]: "Wall", [CellKind.Pellet]: "Pellet",
@@ -43,7 +44,6 @@ const warningText = computed(() => {
   return result;
 });
 const dimensions = computed(() => grid.value ? `${grid.value.width} × ${grid.value.height}` : "—");
-const worldStyle = computed(() => grid.value ? { width: `${grid.value.width * cellSize.value}px`, height: `${grid.value.height * cellSize.value}px` } : {});
 const canUndo = computed(() => undoStack.length > 0);
 const canRedo = computed(() => redoStack.length > 0);
 
@@ -92,11 +92,25 @@ function adjustCounts(before: number, after: number): void {
   else if (after === CellKind.Pellet || after === CellKind.PowerPellet) pelletCount.value++;
 }
 
+function clampPan(): void {
+  const host = viewport.value, value = grid.value; if (!host || !value) return;
+  const maxX = Math.max(0, value.width * cellSize.value - host.clientWidth);
+  const maxY = Math.max(0, value.height * cellSize.value - host.clientHeight);
+  panX = Math.max(0, Math.min(panX, maxX));
+  panY = Math.max(0, Math.min(panY, maxY));
+}
+function onWheel(event: WheelEvent): void {
+  event.preventDefault();
+  panX += event.deltaX; panY += event.deltaY;
+  clampPan(); draw();
+}
+
 async function install(text: string, identity?: { id: string; version: number }): Promise<void> {
   grid.value = await decode(text);
   recount(grid.value);
   levelId.value = identity?.id; version.value = identity?.version;
   revision = 0; acknowledgedRevision = 0; undoStack.length = 0; redoStack.length = 0;
+  panX = 0; panY = 0;
   saveState.value = "saved"; message.value = "";
   await nextTick(); draw();
 }
@@ -153,8 +167,8 @@ function point(event: PointerEvent): [number, number] | null {
   const value = grid.value, element = viewport.value;
   if (!value || !element) return null;
   const rect = element.getBoundingClientRect();
-  const x = Math.floor((event.clientX - rect.left + element.scrollLeft) / cellSize.value);
-  const y = Math.floor((event.clientY - rect.top + element.scrollTop) / cellSize.value);
+  const x = Math.floor((event.clientX - rect.left + panX) / cellSize.value);
+  const y = Math.floor((event.clientY - rect.top + panY) / cellSize.value);
   return value.inBounds(x, y) ? [x, y] : null;
 }
 function paint(x: number, y: number, selectedTool = tool.value): void {
@@ -170,13 +184,12 @@ function drawOverlay(): void {
   const el = overlay.value, host = viewport.value; if (!el || !host) return;
   const ratio = window.devicePixelRatio || 1, width = host.clientWidth, height = host.clientHeight;
   if (el.width !== width * ratio || el.height !== height * ratio) { el.width = width * ratio; el.height = height * ratio; el.style.width = `${width}px`; el.style.height = `${height}px`; }
-  el.style.transform = `translate(${host.scrollLeft}px, ${host.scrollTop}px)`;
   const ctx = el.getContext("2d"); if (!ctx) return;
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0); ctx.clearRect(0, 0, width, height);
   if (!cursor.value) return;
   const [x, y] = cursor.value, cs = cellSize.value;
   ctx.strokeStyle = "#38bdf8"; ctx.lineWidth = 2;
-  ctx.strokeRect(x * cs - host.scrollLeft + 1, y * cs - host.scrollTop + 1, cs - 2, cs - 2);
+  ctx.strokeRect(x * cs - panX + 1, y * cs - panY + 1, cs - 2, cs - 2);
 }
 function onPointerDown(event: PointerEvent): void {
   if (event.button !== 0 && event.button !== 2) return;
@@ -223,28 +236,27 @@ function render(): void {
   drawScheduled = false;
   const element = canvas.value, host = viewport.value, value = grid.value; if (!element || !host || !value) return;
   const ratio = window.devicePixelRatio || 1, width = host.clientWidth, height = host.clientHeight;
-  const cs = cellSize.value, scrollLeft = host.scrollLeft, scrollTop = host.scrollTop;
+  const cs = cellSize.value;
   if (element.width !== width * ratio || element.height !== height * ratio) { element.width = width * ratio; element.height = height * ratio; element.style.width = `${width}px`; element.style.height = `${height}px`; dirtyFull = true; }
-  element.style.transform = `translate(${scrollLeft}px, ${scrollTop}px)`;
   const ctx = element.getContext("2d"); if (!ctx) return;
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
 
   if (dirtyFull) {
     dirtyFull = false; dirtyCells.clear();
     ctx.fillStyle = "#111827"; ctx.fillRect(0, 0, width, height);
-    const left = Math.max(0, Math.floor(scrollLeft / cs)), top = Math.max(0, Math.floor(scrollTop / cs));
-    const right = Math.min(value.width, Math.ceil((scrollLeft + width) / cs)), bottom = Math.min(value.height, Math.ceil((scrollTop + height) / cs));
-    for (let y = top; y < bottom; y++) for (let x = left; x < right; x++) renderCell(ctx, value, x, y, scrollLeft, scrollTop, cs);
+    const left = Math.max(0, Math.floor(panX / cs)), top = Math.max(0, Math.floor(panY / cs));
+    const right = Math.min(value.width, Math.ceil((panX + width) / cs)), bottom = Math.min(value.height, Math.ceil((panY + height) / cs));
+    for (let y = top; y < bottom; y++) for (let x = left; x < right; x++) renderCell(ctx, value, x, y, panX, panY, cs);
     drawOverlay();
     return;
   }
 
   if (dirtyCells.size > 0) {
-    const left = Math.floor(scrollLeft / cs), top = Math.floor(scrollTop / cs);
-    const right = Math.ceil((scrollLeft + width) / cs), bottom = Math.ceil((scrollTop + height) / cs);
+    const left = Math.floor(panX / cs), top = Math.floor(panY / cs);
+    const right = Math.ceil((panX + width) / cs), bottom = Math.ceil((panY + height) / cs);
     for (const idx of dirtyCells) {
       const x = idx % value.width, y = (idx - x) / value.width;
-      if (x >= left && x < right && y >= top && y < bottom) renderCell(ctx, value, x, y, scrollLeft, scrollTop, cs);
+      if (x >= left && x < right && y >= top && y < bottom) renderCell(ctx, value, x, y, panX, panY, cs);
     }
     dirtyCells.clear();
   }
@@ -283,12 +295,12 @@ onBeforeUnmount(() => { window.clearTimeout(saveTimer); worker.terminate(); wind
       </div>
       <div class="ribbon-group">
         <span class="ribbon-title">Zoom</span>
-        <button class="command-button" @click="cellSize = Math.max(8, cellSize - 4); draw()">−<span>Out</span></button><button class="command-button" @click="cellSize = Math.min(40, cellSize + 4); draw()">+<span>In</span></button><span class="zoom-readout">{{ cellSize }}px</span>
+        <button class="command-button" @click="cellSize = Math.max(8, cellSize - 4); clampPan(); draw()">−<span>Out</span></button><button class="command-button" @click="cellSize = Math.min(40, cellSize + 4); clampPan(); draw()">+<span>In</span></button><span class="zoom-readout">{{ cellSize }}px</span>
       </div>
-      <p class="ribbon-hint">Drag to paint · Right-click erases · ⌘/Ctrl+S saves</p>
+      <p class="ribbon-hint">Drag to paint · Right-click erases · Scroll to pan · ⌘/Ctrl+S saves</p>
     </section>
     <section class="workspace">
-      <div ref="viewport" class="viewport" @scroll="draw" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointerup="finishGesture" @pointercancel="finishGesture" @contextmenu.prevent><div class="world" :style="worldStyle"></div><canvas ref="canvas"></canvas><canvas ref="overlay" class="overlay"></canvas></div>
+      <div ref="viewport" class="viewport" @wheel="onWheel" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointerup="finishGesture" @pointercancel="finishGesture" @contextmenu.prevent><canvas ref="canvas"></canvas><canvas ref="overlay" class="overlay"></canvas></div>
     </section>
     <footer v-if="message || warningText.length"><span v-if="message">{{ message }}</span><span v-if="warningText.length">Warnings: {{ warningText.join(" · ") }}</span></footer>
   </main>
