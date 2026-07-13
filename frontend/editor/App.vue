@@ -24,7 +24,7 @@ const cursor = ref<[number, number] | null>(null);
 const undoStack: CellChange[][] = [];
 const redoStack: CellChange[][] = [];
 let revision = 0, acknowledgedRevision = 0, saveTimer = 0, saving = false;
-let drawing = false, previousCell: [number, number] | null = null, gesture = new Map<number, CellChange>();
+let drawing = false, previousCell: [number, number] | null = null, gesture = new Map<number, CellChange>(), drawScheduled = false;
 
 const labels: Record<CellKind, string> = {
   [CellKind.Empty]: "Erase", [CellKind.Wall]: "Wall", [CellKind.Pellet]: "Pellet",
@@ -157,6 +157,12 @@ function undo(): void { const changes = undoStack.pop(); if (!changes || !grid.v
 function redo(): void { const changes = redoStack.pop(); if (!changes || !grid.value) return; applyChanges(grid.value, changes); undoStack.push(changes); markChanged(); }
 
 function draw(): void {
+  if (drawScheduled) return;
+  drawScheduled = true;
+  requestAnimationFrame(render);
+}
+function render(): void {
+  drawScheduled = false;
   const element = canvas.value, host = viewport.value, value = grid.value; if (!element || !host || !value) return;
   const ratio = window.devicePixelRatio || 1, width = host.clientWidth, height = host.clientHeight;
   if (element.width !== width * ratio || element.height !== height * ratio) { element.width = width * ratio; element.height = height * ratio; element.style.width = `${width}px`; element.style.height = `${height}px`; }
