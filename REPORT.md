@@ -35,6 +35,8 @@ Spawn direction uses a drag-to-direct interaction: clicking places a Player/Ghos
 
 Right-click erase was added by AI and later was removed since accidental right-clicks could silently erase work, and the Erase tool provides explicit, intentional control.
 
+A custom level selector was added to the game so that generated or edited levels can be tested directly during gameplay. This closes the loop between the editor and the game, letting the designer immediately play-test their work.
+
 ## 2. What I read and what I chose not to change
 
 ### What I read
@@ -70,7 +72,7 @@ I used Claude Code throughout the project as an implementation partner, not as a
 **What AI suggested that I refused:**
 - **Grid resize (add/remove rows and columns)** — Claude proposed this, but I rejected it because resizing could violate the generator's placement rules for power pellets (near corners) and ghost spawns, creating invalid boards silently.
 - **Backend modifications for custom level names** — I chose to keep the backend unchanged and work within its existing API.
-- **Over-engineered architecture** — suggestions to split the single-file component into multiple composables and a Pinia store. The current scope doesn't warrant that complexity.
+- **Over-engineered architecture** — suggestions to split the single-file component into multiple composables and a Pinia store. The current scope doesn't warrant that complexity. I chose to continue with the single-file component structure.
 
 ## 4. Future directions
 
@@ -80,4 +82,3 @@ Several ideas came up during development that are worth exploring:
 - **Copy and paste** — duplicate a painted region (e.g., a block of walls) to speed up level design.
 - **Empty board generation** — currently you generate a random board and clear it; a direct "new blank board" with a size picker would be cleaner.
 - **Symmetrical generation** — the classic Pac-Man board is horizontally symmetric. A generator mode that mirrors one half would produce more natural-looking levels.
-- **Level selection in the game** — let players choose from saved levels in the game UI, closing the loop between editor and gameplay.
