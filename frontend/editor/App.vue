@@ -28,6 +28,7 @@ const undoStack: CellChange[][] = [];
 const redoStack: CellChange[][] = [];
 let revision = 0, acknowledgedRevision = 0, saveTimer = 0, saving = false;
 let drawing = false, previousCell: [number, number] | null = null, gesture = new Map<number, CellChange>();
+let spawnOrigin: [number, number] | null = null;
 let drawScheduled = false, dirtyFull = true;
 const dirtyCells = new Set<number>();
 let panX = 0, panY = 0;
@@ -195,11 +196,23 @@ function drawOverlay(): void {
   ctx.strokeStyle = "#38bdf8"; ctx.lineWidth = 2;
   ctx.strokeRect(x * cs - panX + 1, y * cs - panY + 1, cs - 2, cs - 2);
 }
+function isSpawnTool(t: CellKind): boolean { return t === CellKind.Player || t === CellKind.Ghost; }
+function directionFromDelta(dx: number, dy: number): SpawnDirection {
+  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? SpawnDirection.Right : SpawnDirection.Left;
+  return dy >= 0 ? SpawnDirection.Down : SpawnDirection.Up;
+}
 function onPointerDown(event: PointerEvent): void {
   if (event.button !== 0 && event.button !== 2) return;
   const cell = point(event); if (!cell) return;
   event.preventDefault(); drawing = true; gesture.clear(); previousCell = cell;
-  paint(cell[0], cell[1], event.button === 2 ? CellKind.Empty : tool.value);
+  const activeTool = event.button === 2 ? CellKind.Empty : tool.value;
+  if (isSpawnTool(activeTool)) {
+    direction.value = SpawnDirection.Right;
+    spawnOrigin = cell;
+  } else {
+    spawnOrigin = null;
+  }
+  paint(cell[0], cell[1], activeTool);
   cursor.value = cell; drawOverlay(); scheduleFrame();
   viewport.value?.setPointerCapture(event.pointerId);
 }
@@ -207,11 +220,23 @@ function onPointerMove(event: PointerEvent): void {
   const cell = point(event);
   cursor.value = cell; drawOverlay();
   if (!drawing || !cell || !previousCell) return;
-  for (const [x, y] of lineCells(previousCell[0], previousCell[1], cell[0], cell[1])) paint(x, y, event.buttons === 2 ? CellKind.Empty : tool.value);
-  previousCell = cell; scheduleFrame();
+  if (spawnOrigin && event.buttons !== 2) {
+    const dx = cell[0] - spawnOrigin[0], dy = cell[1] - spawnOrigin[1];
+    if (dx !== 0 || dy !== 0) {
+      const newDir = directionFromDelta(dx, dy);
+      if (newDir !== direction.value) {
+        direction.value = newDir;
+        paint(spawnOrigin[0], spawnOrigin[1]);
+        scheduleFrame();
+      }
+    }
+  } else {
+    for (const [x, y] of lineCells(previousCell[0], previousCell[1], cell[0], cell[1])) paint(x, y, event.buttons === 2 ? CellKind.Empty : tool.value);
+    previousCell = cell; scheduleFrame();
+  }
 }
 function finishGesture(): void {
-  if (!drawing) return; drawing = false; previousCell = null;
+  if (!drawing) return; drawing = false; previousCell = null; spawnOrigin = null;
   const changes = [...gesture.values()]; gesture.clear();
   if (changes.length) { undoStack.push(changes); if (undoStack.length > 80) undoStack.shift(); redoStack.length = 0; markChanged(); }
 }
@@ -239,14 +264,27 @@ function scheduleFrame(): void {
   requestAnimationFrame(render);
 }
 
+function drawChevron(ctx: CanvasRenderingContext2D, cx: number, cy: number, cs: number, dir: number): void {
+  const s = cs / 48;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.strokeStyle = "#000"; ctx.lineWidth = Math.max(1, 1.5 * s); ctx.lineCap = "round"; ctx.lineJoin = "round";
+  ctx.beginPath();
+  if (dir === SpawnDirection.Right) { ctx.moveTo(-3.75 * s, -7.5 * s); ctx.lineTo(3.75 * s, 0); ctx.lineTo(-3.75 * s, 7.5 * s); }
+  else if (dir === SpawnDirection.Left) { ctx.moveTo(3.75 * s, -7.5 * s); ctx.lineTo(-3.75 * s, 0); ctx.lineTo(3.75 * s, 7.5 * s); }
+  else if (dir === SpawnDirection.Up) { ctx.moveTo(-7.5 * s, 3.75 * s); ctx.lineTo(0, -3.75 * s); ctx.lineTo(7.5 * s, 3.75 * s); }
+  else { ctx.moveTo(-7.5 * s, -3.75 * s); ctx.lineTo(0, 3.75 * s); ctx.lineTo(7.5 * s, -3.75 * s); }
+  ctx.stroke();
+  ctx.restore();
+}
 function renderCell(ctx: CanvasRenderingContext2D, value: LevelGrid, x: number, y: number, scrollLeft: number, scrollTop: number, cs: number): void {
-  const px = x * cs - scrollLeft, py = y * cs - scrollTop, kind = value.cells[value.index(x, y)]!;
+  const px = x * cs - scrollLeft, py = y * cs - scrollTop, idx = value.index(x, y), kind = value.cells[idx]!;
   ctx.fillStyle = kind === CellKind.Wall ? "#334155" : "#0f172a"; ctx.fillRect(px, py, cs, cs);
   const centerX = px + cs / 2, centerY = py + cs / 2;
   if (kind === CellKind.Pellet) drawPellet(ctx, centerX, centerY, cs);
   if (kind === CellKind.PowerPellet) drawPowerPellet(ctx, centerX, centerY, cs * .9, cs * .5);
-  if (kind === CellKind.Ghost) drawGhost(ctx, centerX, centerY, cs);
-  if (kind === CellKind.Player) drawPlayer(ctx, centerX, centerY, cs, value.directions[value.index(x, y)]! as Direction, "#ffeb3b");
+  if (kind === CellKind.Ghost) { drawGhost(ctx, centerX, centerY, cs); drawChevron(ctx, centerX, centerY, cs, value.directions[idx]!); }
+  if (kind === CellKind.Player) drawPlayer(ctx, centerX, centerY, cs, value.directions[idx]! as Direction, "#ffeb3b");
   if (cs >= 16) { ctx.strokeStyle = "#1e293b"; ctx.strokeRect(px, py, cs, cs); }
 }
 
@@ -306,18 +344,14 @@ onBeforeUnmount(() => { window.clearTimeout(saveTimer); worker.terminate(); wind
       <div class="ribbon-group">
         <span class="ribbon-title">Tiles</span>
         <button v-for="item in toolList" :key="item" class="tool-button" :class="{ active: tool === item }" :aria-pressed="tool === item" @click="tool = item">
-          <ToolIcon :kind="item" :direction="direction" /><span>{{ labels[item] }}</span>
+          <ToolIcon :kind="item" /><span>{{ labels[item] }}</span>
         </button>
-      </div>
-      <div v-if="tool === CellKind.Player || tool === CellKind.Ghost" class="ribbon-group">
-        <span class="ribbon-title">Spawn direction</span>
-        <button v-for="(name, value) in ['↑','→','↓','←']" :key="name" class="direction-button" :class="{ active: direction === value }" :aria-label="`Face ${name}`" @click="direction = value">{{ name }}</button>
       </div>
       <div class="ribbon-group">
         <span class="ribbon-title">Zoom</span>
         <button class="command-button" @click="cellSize = Math.max(8, cellSize - 4); clampPan(); draw()"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607ZM13.5 10.5h-6" /></svg><span>Out</span></button><button class="command-button" @click="cellSize = Math.min(40, cellSize + 4); clampPan(); draw()"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607ZM10.5 7.5v6m3-3h-6" /></svg><span>In</span></button>
       </div>
-      <p class="ribbon-info">Drag to paint · Right-click erases · Scroll to pan · ⌘Z undo · ⌘S saves</p>
+      <p class="ribbon-info">Drag to paint · Drag spawns to aim · Right-click erases · Scroll to pan · ⌘Z undo · ⌘S saves</p>
     </section>
     <section class="workspace">
       <div ref="viewport" class="viewport" @wheel="onWheel" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointerup="finishGesture" @pointercancel="finishGesture" @contextmenu.prevent><canvas ref="canvas"></canvas><canvas ref="overlay" class="overlay"></canvas></div>
