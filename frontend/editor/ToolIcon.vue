@@ -14,8 +14,8 @@ function render(): void {
   ctx.clearRect(0, 0, element.width, element.height);
   const center = element.width / 2;
   if (props.kind === CellKind.Wall) {
-    ctx.fillStyle = "#334155"; ctx.fillRect(7, 7, 26, 26);
-    ctx.strokeStyle = "#64748b"; ctx.strokeRect(7.5, 7.5, 25, 25);
+    ctx.fillStyle = "#111111"; ctx.fillRect(7, 7, 26, 26);
+    ctx.strokeStyle = "#333"; ctx.strokeRect(7.5, 7.5, 25, 25);
   } else if (props.kind === CellKind.Empty) {
     // rendered as SVG in template
   } else if (props.kind === CellKind.Pellet) drawPellet(ctx, center, center, 38);

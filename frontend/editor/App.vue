@@ -315,13 +315,13 @@ function drawChevron(ctx: CanvasRenderingContext2D, cx: number, cy: number, cs: 
 }
 function renderCell(ctx: CanvasRenderingContext2D, value: LevelGrid, x: number, y: number, scrollLeft: number, scrollTop: number, cs: number): void {
   const px = x * cs - scrollLeft, py = y * cs - scrollTop, idx = value.index(x, y), kind = value.cells[idx]!;
-  ctx.fillStyle = kind === CellKind.Wall ? "#334155" : "#0f172a"; ctx.fillRect(px, py, cs, cs);
+  ctx.fillStyle = kind === CellKind.Wall ? "#111111" : "#2b2b2b"; ctx.fillRect(px, py, cs, cs);
   const centerX = px + cs / 2, centerY = py + cs / 2;
   if (kind === CellKind.Pellet) drawPellet(ctx, centerX, centerY, cs);
   if (kind === CellKind.PowerPellet) drawPowerPellet(ctx, centerX, centerY, cs * .9, cs * .5);
   if (kind === CellKind.Ghost) { drawGhost(ctx, centerX, centerY, cs); drawChevron(ctx, centerX, centerY, cs, value.directions[idx]!); }
   if (kind === CellKind.Player) drawPlayer(ctx, centerX, centerY, cs, value.directions[idx]! as Direction, "#ffeb3b");
-  if (cs >= 16) { ctx.strokeStyle = "#1e293b"; ctx.strokeRect(px, py, cs, cs); }
+  if (cs >= 16) { ctx.strokeStyle = "#333"; ctx.strokeRect(px, py, cs, cs); }
 }
 
 function render(): void {
@@ -335,7 +335,7 @@ function render(): void {
 
   if (dirtyFull) {
     dirtyFull = false; dirtyCells.clear();
-    ctx.fillStyle = "#111827"; ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = "#1a1a1a"; ctx.fillRect(0, 0, width, height);
     const left = Math.max(0, Math.floor(panX / cs)), top = Math.max(0, Math.floor(panY / cs));
     const right = Math.min(value.width, Math.ceil((panX + width) / cs)), bottom = Math.min(value.height, Math.ceil((panY + height) / cs));
     for (let y = top; y < bottom; y++) for (let x = left; x < right; x++) renderCell(ctx, value, x, y, panX, panY, cs);
