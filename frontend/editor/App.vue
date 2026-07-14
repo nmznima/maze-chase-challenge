@@ -14,8 +14,10 @@ const levelIds = ref<string[]>([]);
 const levelId = ref<string | undefined>();
 const version = ref<number | undefined>();
 const selectedLevel = ref("classic");
-const tool = ref<CellKind>(CellKind.Wall);
+const SELECT_TOOL = -1;
+const tool = ref<CellKind | typeof SELECT_TOOL>(CellKind.Wall);
 const direction = ref(SpawnDirection.Right);
+const selectedCell = ref<[number, number] | null>(null);
 const cellSize = ref(20);
 const seed = ref(42);
 const size = ref(31);
@@ -50,6 +52,26 @@ const dimensions = computed(() => grid.value ? `${grid.value.width} × ${grid.va
 const historyVersion = ref(0);
 const canUndo = computed(() => { historyVersion.value; return undoStack.length > 0; });
 const canRedo = computed(() => { historyVersion.value; return redoStack.length > 0; });
+const canRotate = computed(() => {
+  historyVersion.value;
+  const cell = selectedCell.value, value = grid.value;
+  if (!cell || !value) return false;
+  const kind = value.cells[value.index(cell[0], cell[1])]!;
+  return kind === CellKind.Player || kind === CellKind.Ghost;
+});
+function rotate(): void {
+  const cell = selectedCell.value, value = grid.value;
+  if (!cell || !value) return;
+  const idx = value.index(cell[0], cell[1]), kind = value.cells[idx]!;
+  if (kind !== CellKind.Player && kind !== CellKind.Ghost) return;
+  const oldDir = value.directions[idx]!;
+  const newDir = (oldDir + 1) % 4;
+  const change: CellChange = { index: idx, before: kind, beforeDirection: oldDir, after: kind, afterDirection: newDir };
+  value.directions[idx] = newDir;
+  dirtyCells.add(idx);
+  undoStack.push([change]); if (undoStack.length > 80) undoStack.shift(); redoStack.length = 0;
+  markChanged();
+}
 
 // Bun's dev server does not transform `new URL(..., import.meta.url)` worker
 // references, so the editor server exposes this module at an explicit URL.
@@ -113,7 +135,7 @@ async function install(text: string, identity?: { id: string; version: number })
   grid.value = await decode(text);
   recount(grid.value);
   levelId.value = identity?.id; version.value = identity?.version;
-  revision = 0; acknowledgedRevision = 0; undoStack.length = 0; redoStack.length = 0; historyVersion.value += 1;
+  revision = 0; acknowledgedRevision = 0; undoStack.length = 0; redoStack.length = 0; historyVersion.value += 1; selectedCell.value = null;
   panX = 0; panY = 0;
   saveState.value = "saved"; message.value = "";
   await nextTick(); draw();
@@ -176,7 +198,7 @@ function point(event: PointerEvent): [number, number] | null {
   const y = Math.floor((event.clientY - rect.top + panY) / cellSize.value);
   return value.inBounds(x, y) ? [x, y] : null;
 }
-function paint(x: number, y: number, selectedTool = tool.value): void {
+function paint(x: number, y: number, selectedTool: CellKind = tool.value as CellKind): void {
   const value = grid.value; if (!value) return;
   const change = setCell(value, x, y, selectedTool, direction.value);
   if (!change) return;
@@ -191,8 +213,14 @@ function drawOverlay(): void {
   if (el.width !== width * ratio || el.height !== height * ratio) { el.width = width * ratio; el.height = height * ratio; el.style.width = `${width}px`; el.style.height = `${height}px`; }
   const ctx = el.getContext("2d"); if (!ctx) return;
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0); ctx.clearRect(0, 0, width, height);
+  const cs = cellSize.value;
+  if (selectedCell.value) {
+    const [sx, sy] = selectedCell.value;
+    ctx.strokeStyle = "#facc15"; ctx.lineWidth = 2;
+    ctx.strokeRect(sx * cs - panX + 1, sy * cs - panY + 1, cs - 2, cs - 2);
+  }
   if (!cursor.value) return;
-  const [x, y] = cursor.value, cs = cellSize.value;
+  const [x, y] = cursor.value;
   ctx.strokeStyle = "#38bdf8"; ctx.lineWidth = 2;
   ctx.strokeRect(x * cs - panX + 1, y * cs - panY + 1, cs - 2, cs - 2);
 }
@@ -204,8 +232,15 @@ function directionFromDelta(dx: number, dy: number): SpawnDirection {
 function onPointerDown(event: PointerEvent): void {
   if (event.button !== 0 && event.button !== 2) return;
   const cell = point(event); if (!cell) return;
-  event.preventDefault(); drawing = true; gesture.clear(); previousCell = cell;
-  const activeTool = event.button === 2 ? CellKind.Empty : tool.value;
+  event.preventDefault();
+  if (tool.value === SELECT_TOOL && event.button === 0) {
+    const prev = selectedCell.value;
+    selectedCell.value = (prev && prev[0] === cell[0] && prev[1] === cell[1]) ? null : cell;
+    cursor.value = cell; drawOverlay();
+    return;
+  }
+  drawing = true; gesture.clear(); previousCell = cell;
+  const activeTool = event.button === 2 ? CellKind.Empty : tool.value as CellKind;
   if (isSpawnTool(activeTool)) {
     direction.value = SpawnDirection.Right;
     spawnOrigin = cell;
@@ -231,7 +266,7 @@ function onPointerMove(event: PointerEvent): void {
       }
     }
   } else {
-    for (const [x, y] of lineCells(previousCell[0], previousCell[1], cell[0], cell[1])) paint(x, y, event.buttons === 2 ? CellKind.Empty : tool.value);
+    for (const [x, y] of lineCells(previousCell[0], previousCell[1], cell[0], cell[1])) paint(x, y, event.buttons === 2 ? CellKind.Empty : tool.value as CellKind);
     previousCell = cell; scheduleFrame();
   }
 }
@@ -343,7 +378,9 @@ onBeforeUnmount(() => { window.clearTimeout(saveTimer); worker.terminate(); wind
       </div>
       <div class="ribbon-group">
         <span class="ribbon-title">Tiles</span>
-        <button v-for="item in toolList" :key="item" class="tool-button" :class="{ active: tool === item }" :aria-pressed="tool === item" @click="tool = item">
+        <button class="tool-button" :class="{ active: tool === SELECT_TOOL }" @click="tool = SELECT_TOOL"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor"><path d="m320-410 79-110h170L320-716v306ZM551-80 406-392 240-160v-720l560 440H516l144 309-109 51ZM399-520Z"/></svg><span>Select</span></button>
+        <button class="command-button" :disabled="!canRotate" @click="rotate"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor"><path d="M440-80q-75 0-140.5-28.5t-114-77q-48.5-48.5-77-114T80-440q0-150 105-255t255-105h6l-62-62 56-58 160 160-160 160-56-58 62-62h-6q-117 0-198.5 81.5T160-440q0 117 81.5 198.5T440-160q35 0 69-8.5t65-25.5l58 58q-43 28-92 42T440-80Zm240-120L440-440l240-240 240 240-240 240Zm0-114 126-126-126-126-126 126 126 126Zm0-126Z"/></svg><span>Rotate</span></button>
+        <button v-for="item in toolList" :key="item" class="tool-button" :class="{ active: tool === item }" :aria-pressed="tool === item" @click="tool = item; selectedCell = null">
           <ToolIcon :kind="item" /><span>{{ labels[item] }}</span>
         </button>
       </div>
@@ -354,7 +391,7 @@ onBeforeUnmount(() => { window.clearTimeout(saveTimer); worker.terminate(); wind
       <p class="ribbon-info">Drag to paint · Drag spawns to aim · Right-click erases · Scroll to pan · ⌘Z undo · ⌘S saves</p>
     </section>
     <section class="workspace">
-      <div ref="viewport" class="viewport" @wheel="onWheel" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointerup="finishGesture" @pointercancel="finishGesture" @contextmenu.prevent><canvas ref="canvas"></canvas><canvas ref="overlay" class="overlay"></canvas></div>
+      <div ref="viewport" class="viewport" :style="{ cursor: tool === SELECT_TOOL ? 'default' : 'crosshair' }" @wheel="onWheel" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointerup="finishGesture" @pointercancel="finishGesture" @contextmenu.prevent><canvas ref="canvas"></canvas><canvas ref="overlay" class="overlay"></canvas></div>
     </section>
     <footer v-if="message || warningText.length"><span v-if="message">{{ message }}</span><span v-if="warningText.length">Warnings: {{ warningText.join(" · ") }}</span></footer>
     <div v-if="showGenerateModal" class="modal-backdrop" @click.self="showGenerateModal = false">
