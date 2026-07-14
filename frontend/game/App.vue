@@ -30,6 +30,7 @@ const TICKS_PER_SECOND = 60;
 const POWER_BLINK_TICKS = TICKS_PER_SECOND;
 const POWER_BLINK_PERIOD = 8;
 
+const API_URL = "http://127.0.0.1:8000";
 const engine = ref<Engine | null>(null);
 const players = ref<readonly Player[]>([]);
 const ghosts = ref<readonly Ghost[]>([]);
@@ -39,6 +40,10 @@ const levelWidth = ref(0);
 const levelHeight = ref(0);
 const fps = ref(0);
 const heldDirection = ref<Direction | null>(null);
+const levelSource = ref<"classic" | "server">("classic");
+const serverLevels = ref<string[]>([]);
+const selectedServerId = ref("");
+const loadError = ref("");
 
 let frameId = 0;
 let lastFrameTime = 0;
@@ -209,12 +214,49 @@ function onKeyUp(event: KeyboardEvent): void {
   }
 }
 
-onMounted(() => {
-  engine.value = new Engine(CLASSIC, div(fromNum(1), fromNum(8)));
+function startGame(ascii2d: string): void {
+  cancelAnimationFrame(frameId);
+  lastFrameTime = 0; frameCount = 0; fpsWindowStart = 0;
+  engine.value = new Engine(ascii2d, div(fromNum(1), fromNum(8)));
   syncState();
+  frameId = requestAnimationFrame(tickFrame);
+}
+
+async function loadServerLevel(): Promise<void> {
+  if (!selectedServerId.value) return;
+  loadError.value = "";
+  try {
+    const res = await fetch(`${API_URL}/level/load?id=${encodeURIComponent(selectedServerId.value)}`);
+    if (!res.ok) throw new Error(`Failed to load (${res.status})`);
+    const data = await res.json();
+    startGame(data.ascii2d);
+  } catch (e) {
+    loadError.value = e instanceof Error ? e.message : "Failed to load level";
+  }
+}
+
+async function fetchServerLevels(): Promise<void> {
+  try {
+    const res = await fetch(`${API_URL}/levels`);
+    if (res.ok) serverLevels.value = await res.json();
+  } catch { /* backend may be offline */ }
+}
+
+function onSourceChange(): void {
+  loadError.value = "";
+  if (levelSource.value === "classic") {
+    startGame(CLASSIC);
+  } else {
+    fetchServerLevels();
+    if (selectedServerId.value) loadServerLevel();
+  }
+}
+
+onMounted(() => {
+  startGame(CLASSIC);
+  fetchServerLevels();
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
-  frameId = requestAnimationFrame(tickFrame);
 });
 
 onUnmounted(() => {
@@ -227,6 +269,17 @@ onUnmounted(() => {
 <template>
   <main class="game">
     <h1>Maze Chase</h1>
+    <div class="level-picker">
+      <label><input type="radio" value="classic" v-model="levelSource" @change="onSourceChange" /> Default Classic</label>
+      <label><input type="radio" value="server" v-model="levelSource" @change="onSourceChange" /> From Server</label>
+      <template v-if="levelSource === 'server'">
+        <select v-model="selectedServerId" @change="loadServerLevel">
+          <option value="" disabled>Select a level</option>
+          <option v-for="id in serverLevels" :key="id" :value="id">{{ id === "classic" ? "classic" : id.slice(0, 8) }}</option>
+        </select>
+      </template>
+    </div>
+    <p v-if="loadError" class="error">{{ loadError }}</p>
     <p class="hint">Arrow keys to move</p>
     <canvas id="game-canvas" :width="canvasWidth" :height="canvasHeight" />
   </main>
@@ -256,5 +309,36 @@ h1 {
 canvas {
   border: 1px solid #444444;
   background: #2b2b2b;
+}
+
+.level-picker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.85rem;
+  color: #ccc;
+}
+
+.level-picker label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.level-picker select {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 3px 6px;
+  border: 1px solid #555;
+  border-radius: 4px;
+  color: #f5f5f5;
+  background: #1a1a1a;
+}
+
+.error {
+  margin: 0;
+  color: #f87171;
+  font-size: 0.8rem;
 }
 </style>
