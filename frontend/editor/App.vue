@@ -35,7 +35,7 @@ const labels: Record<CellKind, string> = {
   [CellKind.Empty]: "Erase", [CellKind.Wall]: "Wall", [CellKind.Pellet]: "Pellet",
   [CellKind.PowerPellet]: "Power pellet", [CellKind.Player]: "Player", [CellKind.Ghost]: "Ghost",
 };
-const toolList = [CellKind.Wall, CellKind.Empty, CellKind.Pellet, CellKind.PowerPellet, CellKind.Player, CellKind.Ghost];
+const toolList = [CellKind.Wall, CellKind.Pellet, CellKind.PowerPellet, CellKind.Player, CellKind.Ghost, CellKind.Empty];
 const playerCount = ref(0);
 const pelletCount = ref(0);
 const warningText = computed(() => {
@@ -290,17 +290,14 @@ onBeforeUnmount(() => { window.clearTimeout(saveTimer); worker.terminate(); wind
 
 <template>
   <main>
-    <header><h1>Maze Chase Editor</h1><p class="header-info">Size: {{ dimensions }} | Position: {{ cursor ? `${cursor[0]}, ${cursor[1]}` : "—" }}</p></header>
+    <header><div class="header-left"><h1>Maze Chase Editor</h1><select v-model="selectedLevel" @change="openLevel()"><option v-for="id in levelIds" :key="id" :value="id">{{ id === "classic" ? "classic" : id.slice(0, 8) }}</option></select><div class="status" :data-state="saveState">{{ saveState }}</div></div><p class="header-info">Size: {{ dimensions }} | Position: {{ cursor ? `${cursor[0]}, ${cursor[1]}` : "—" }}</p></header>
     <section class="ribbon" aria-label="Editing tools">
       <div class="ribbon-group">
-        <span class="ribbon-title">Level</span>
-        <div class="level-controls">
-          <select v-model="selectedLevel" @change="openLevel()"><option v-for="id in levelIds" :key="id" :value="id">{{ id === "classic" ? "classic" : id.slice(0, 8) }}</option></select>
-          <div class="level-buttons">
-            <button @click="openLevel()">Reload</button><button @click="save" :disabled="saveState === 'saving' || saveState === 'conflict'">Save</button>
-          </div>
-          <div class="status" :data-state="saveState">{{ saveState }}</div>
-        </div>
+        <span class="ribbon-title">Actions</span>
+        <button class="command-button" @click="showGenerateModal = true"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg><span>New</span></button>
+        <button class="command-button" @click="openLevel()"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg><span>Reload</span></button>
+        <button class="command-button" @click="clearMap"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg><span>Clear All</span></button>
+        <button class="command-button" @click="save" :disabled="saveState === 'saving' || saveState === 'conflict'"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor"><path d="M840-680v480q0 33-23.5 56.5T760-120H200q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h480l160 160Zm-80 34L646-760H200v560h560v-446ZM565-275q35-35 35-85t-35-85q-35-35-85-35t-85 35q-35 35-35 85t35 85q35 35 85 35t85-35ZM240-560h360v-160H240v160Zm-40-86v446-560 114Z"/></svg><span>Save</span></button>
       </div>
       <div class="ribbon-group">
         <span class="ribbon-title">Tiles</span>
@@ -313,18 +310,10 @@ onBeforeUnmount(() => { window.clearTimeout(saveTimer); worker.terminate(); wind
         <button v-for="(name, value) in ['↑','→','↓','←']" :key="name" class="direction-button" :class="{ active: direction === value }" :aria-label="`Face ${name}`" @click="direction = value">{{ name }}</button>
       </div>
       <div class="ribbon-group">
-        <span class="ribbon-title">History</span>
-        <button class="command-button" :disabled="!canUndo" @click="undo">↶<span>Undo</span></button><button class="command-button" :disabled="!canRedo" @click="redo">↷<span>Redo</span></button><button class="command-button" @click="clearMap">✕<span>Clear</span></button>
-      </div>
-      <div class="ribbon-group">
         <span class="ribbon-title">Zoom</span>
-        <button class="command-button" @click="cellSize = Math.max(8, cellSize - 4); clampPan(); draw()"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="22" height="22"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607ZM13.5 10.5h-6" /></svg><span>Out</span></button><button class="command-button" @click="cellSize = Math.min(40, cellSize + 4); clampPan(); draw()"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="22" height="22"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607ZM10.5 7.5v6m3-3h-6" /></svg><span>In</span></button><span class="zoom-readout">{{ cellSize }}px</span>
+        <button class="command-button" @click="cellSize = Math.max(8, cellSize - 4); clampPan(); draw()"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607ZM13.5 10.5h-6" /></svg><span>Out</span></button><button class="command-button" @click="cellSize = Math.min(40, cellSize + 4); clampPan(); draw()"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607ZM10.5 7.5v6m3-3h-6" /></svg><span>In</span></button>
       </div>
-      <div class="ribbon-group">
-        <span class="ribbon-title">Generate</span>
-        <button class="command-button" @click="showGenerateModal = true">+<span>New Map</span></button>
-      </div>
-      <p class="ribbon-info">Drag to paint · Right-click erases · Scroll to pan · ⌘S saves</p>
+      <p class="ribbon-info">Drag to paint · Right-click erases · Scroll to pan · ⌘Z undo · ⌘S saves</p>
     </section>
     <section class="workspace">
       <div ref="viewport" class="viewport" @wheel="onWheel" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointerup="finishGesture" @pointercancel="finishGesture" @contextmenu.prevent><canvas ref="canvas"></canvas><canvas ref="overlay" class="overlay"></canvas></div>

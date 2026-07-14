@@ -9,8 +9,10 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 input, select { border: 1px solid #475569; border-radius: 5px; padding: 6px; color: inherit; background: #0f172a; }
 input[type=number] { width: 78px; }
 main { height: 100%; min-height: 100vh; display: grid; grid-template-rows: auto auto 1fr auto; }
-header { display: flex; align-items: center; justify-content: space-between; padding: 6px 20px; border-bottom: 1px solid #1e293b; background: #0f172a; }
-.header-info { margin: 0; color: #94a3b8; font-size: .8rem; }
+header { display: flex; align-items: center; justify-content: space-between; padding: 6px 20px; gap: 12px; border-bottom: 1px solid #1e293b; background: #0f172a; }
+.header-left { display: flex; align-items: center; gap: 10px; }
+.header-left select { font-size: .8rem; padding: 3px 6px; }
+.header-info { margin: 0; color: #94a3b8; font-size: .8rem; white-space: nowrap; }
 h1 { margin: 0; font-size: .95rem; }
 h2 { margin: 14px 0 6px; font-size: .75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: .08em; }
 .status { border-radius: 999px; padding: 4px 9px; font-size: .72rem; text-transform: capitalize; background: #334155; white-space: nowrap; }
@@ -19,17 +21,9 @@ h2 { margin: 14px 0 6px; font-size: .75rem; color: #94a3b8; text-transform: uppe
 .ribbon-group { position: relative; display: flex; align-items: flex-start; gap: 3px; min-width: max-content; padding: 2px 11px 20px 0; margin-right: 11px; border-right: 1px solid #334155; }
 .ribbon-group:last-of-type { border-right: 0; }
 .ribbon-title { position: absolute; right: 11px; bottom: 2px; left: 0; color: #94a3b8; font-size: .66rem; text-align: center; }
-.level-controls { display: flex; flex-direction: column; gap: 4px; align-self: center; padding-bottom: 12px; }
-.level-controls select { width: 100%; font-size: .8rem; padding: 4px 6px; }
-.level-buttons { display: flex; gap: 3px; }
-.level-buttons button { flex: 1; font-size: .7rem; padding: 4px 7px; }
-.level-controls .status { align-self: center; }
-.tool-button, .command-button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 62px; height: 58px; padding: 3px 6px; font-size: .68rem; }
-.tool-button canvas { width: 35px; height: 35px; }
-.command-button { min-width: 45px; font-size: 1.35rem; line-height: 1; }
-.command-button span { font-size: .66rem; }
+.tool-button, .command-button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 52px; height: 58px; padding: 5px 6px; font-size: .66rem; }
+.tool-button canvas, .tool-button svg, .command-button svg { width: 24px; height: 24px; flex-shrink: 0; }
 .direction-button { width: 34px; height: 42px; padding: 3px; font-size: 1.25rem; }
-.zoom-readout { align-self: center; min-width: 42px; padding-top: 5px; color: #cbd5e1; font-size: .76rem; text-align: center; }
 .ribbon-info { align-self: center; min-width: max-content; margin: 0 0 17px auto; padding-left: 10px; color: #94a3b8; font-size: .75rem; }
 .workspace { min-height: 0; }
 .viewport { position: relative; overflow: hidden; height: 100%; min-height: 0; background: #111827; cursor: crosshair; }
