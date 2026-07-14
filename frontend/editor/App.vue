@@ -231,17 +231,17 @@ function directionFromDelta(dx: number, dy: number): SpawnDirection {
   return dy >= 0 ? SpawnDirection.Down : SpawnDirection.Up;
 }
 function onPointerDown(event: PointerEvent): void {
-  if (event.button !== 0 && event.button !== 2) return;
+  if (event.button !== 0) return;
   const cell = point(event); if (!cell) return;
   event.preventDefault();
-  if (tool.value === SELECT_TOOL && event.button === 0) {
+  if (tool.value === SELECT_TOOL) {
     const prev = selectedCell.value;
     selectedCell.value = (prev && prev[0] === cell[0] && prev[1] === cell[1]) ? null : cell;
     cursor.value = cell; drawOverlay();
     return;
   }
   drawing = true; gesture.clear(); previousCell = cell;
-  const activeTool = event.button === 2 ? CellKind.Empty : tool.value as CellKind;
+  const activeTool = tool.value as CellKind;
   if (isSpawnTool(activeTool)) {
     direction.value = SpawnDirection.Right;
     spawnOrigin = cell;
@@ -256,7 +256,7 @@ function onPointerMove(event: PointerEvent): void {
   const cell = point(event);
   cursor.value = cell; drawOverlay();
   if (!drawing || !cell || !previousCell) return;
-  if (spawnOrigin && event.buttons !== 2) {
+  if (spawnOrigin) {
     const dx = cell[0] - spawnOrigin[0], dy = cell[1] - spawnOrigin[1];
     if (dx !== 0 || dy !== 0) {
       const newDir = directionFromDelta(dx, dy);
@@ -267,7 +267,7 @@ function onPointerMove(event: PointerEvent): void {
       }
     }
   } else {
-    for (const [x, y] of lineCells(previousCell[0], previousCell[1], cell[0], cell[1])) paint(x, y, event.buttons === 2 ? CellKind.Empty : tool.value as CellKind);
+    for (const [x, y] of lineCells(previousCell[0], previousCell[1], cell[0], cell[1])) paint(x, y);
     previousCell = cell; scheduleFrame();
   }
 }
@@ -355,7 +355,7 @@ function render(): void {
 }
 function keyboard(event: KeyboardEvent): void {
   if (event.key === "Escape") { if (showHelp.value) { showHelp.value = false; return; } if (showClearConfirm.value) { showClearConfirm.value = false; return; } if (showGenerateModal.value) { showGenerateModal.value = false; return; } }
-  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") { event.preventDefault(); event.shiftKey ? redo() : undo(); }
+  if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === "z") { event.preventDefault(); undo(); }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "y") { event.preventDefault(); redo(); }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") { event.preventDefault(); void save(); }
 }
@@ -394,7 +394,7 @@ onBeforeUnmount(() => { window.clearTimeout(saveTimer); worker.terminate(); wind
       </div>
     </section>
     <section class="workspace">
-      <div ref="viewport" class="viewport" :style="{ cursor: tool === SELECT_TOOL ? 'default' : 'crosshair' }" @wheel="onWheel" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointerup="finishGesture" @pointercancel="finishGesture" @contextmenu.prevent><canvas ref="canvas"></canvas><canvas ref="overlay" class="overlay"></canvas></div>
+      <div ref="viewport" class="viewport" :style="{ cursor: tool === SELECT_TOOL ? 'default' : 'crosshair' }" @wheel="onWheel" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointerup="finishGesture" @pointercancel="finishGesture"><canvas ref="canvas"></canvas><canvas ref="overlay" class="overlay"></canvas></div>
     </section>
     <footer v-if="message || warningText.length"><span v-if="message">{{ message }}</span><span v-if="warningText.length">Warnings: {{ warningText.join(" · ") }}</span></footer>
     <div v-if="showGenerateModal" class="modal-backdrop" @click.self="showGenerateModal = false">
@@ -424,7 +424,6 @@ onBeforeUnmount(() => { window.clearTimeout(saveTimer); worker.terminate(); wind
         <h3>Mouse</h3>
         <dl class="help-list">
           <dt>Left-click drag</dt><dd>Paint with the selected tile</dd>
-          <dt>Right-click drag</dt><dd>Erase cells</dd>
           <dt>Scroll wheel</dt><dd>Pan the viewport</dd>
           <dt>Drag after placing a spawn</dt><dd>Set Player/Ghost facing direction</dd>
           <dt>Select tool + click</dt><dd>Select a cell (click again to deselect)</dd>
@@ -432,7 +431,6 @@ onBeforeUnmount(() => { window.clearTimeout(saveTimer); worker.terminate(); wind
         <h3>Keyboard shortcuts</h3>
         <dl class="help-list">
           <dt><kbd>Ctrl</kbd>/<kbd>&#8984;</kbd> + <kbd>Z</kbd></dt><dd>Undo</dd>
-          <dt><kbd>Ctrl</kbd>/<kbd>&#8984;</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd></dt><dd>Redo</dd>
           <dt><kbd>Ctrl</kbd>/<kbd>&#8984;</kbd> + <kbd>Y</kbd></dt><dd>Redo</dd>
           <dt><kbd>Ctrl</kbd>/<kbd>&#8984;</kbd> + <kbd>S</kbd></dt><dd>Save</dd>
           <dt><kbd>Esc</kbd></dt><dd>Close modals</dd>
@@ -443,7 +441,7 @@ onBeforeUnmount(() => { window.clearTimeout(saveTimer); worker.terminate(); wind
           <dt>Rotate</dt><dd>Rotate the selected Player/Ghost 90&#176; clockwise</dd>
           <dt>Wall / Pellet / Power pellet</dt><dd>Paint tiles on the board</dd>
           <dt>Player / Ghost</dt><dd>Place a spawn, then drag to set direction</dd>
-          <dt>Erase</dt><dd>Remove a tile (same as right-click)</dd>
+          <dt>Erase</dt><dd>Remove a tile</dd>
         </dl>
         <div class="modal-actions"><button @click="showHelp = false">Close</button></div>
       </div>

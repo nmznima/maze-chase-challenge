@@ -39,7 +39,7 @@ footer { display: flex; justify-content: space-between; gap: 20px; min-height: 3
 .modal-danger:hover { background: #b91c1c; border-color: #fca5a5; }
 .help-modal { min-width: 400px; max-width: 520px; max-height: 80vh; overflow-y: auto; }
 .help-modal h3 { margin: 6px 0 2px; font-size: .8rem; color: #999; }
-.help-list { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; font-size: .82rem; }
+.help-list { display: grid; grid-template-columns: 200px 1fr; gap: 4px 14px; margin: 0; font-size: .82rem; }
 .help-list dt { color: #ccc; white-space: nowrap; }
 .help-list dd { margin: 0; color: #999; }
 kbd { background: #444; border: 1px solid #555; border-radius: 3px; padding: 1px 5px; font-family: inherit; font-size: .78rem; }
