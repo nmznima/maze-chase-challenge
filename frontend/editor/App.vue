@@ -25,6 +25,7 @@ const saveState = ref<"loading" | "saved" | "saving" | "unsaved" | "offline" | "
 const message = ref("");
 const showGenerateModal = ref(false);
 const showClearConfirm = ref(false);
+const showHelp = ref(false);
 const cursor = ref<[number, number] | null>(null);
 const undoStack: CellChange[][] = [];
 const redoStack: CellChange[][] = [];
@@ -353,7 +354,7 @@ function render(): void {
   }
 }
 function keyboard(event: KeyboardEvent): void {
-  if (event.key === "Escape") { if (showClearConfirm.value) { showClearConfirm.value = false; return; } if (showGenerateModal.value) { showGenerateModal.value = false; return; } }
+  if (event.key === "Escape") { if (showHelp.value) { showHelp.value = false; return; } if (showClearConfirm.value) { showClearConfirm.value = false; return; } if (showGenerateModal.value) { showGenerateModal.value = false; return; } }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") { event.preventDefault(); event.shiftKey ? redo() : undo(); }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "y") { event.preventDefault(); redo(); }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") { event.preventDefault(); void save(); }
@@ -388,7 +389,9 @@ onBeforeUnmount(() => { window.clearTimeout(saveTimer); worker.terminate(); wind
         <span class="ribbon-title">Zoom</span>
         <button class="command-button" @click="cellSize = Math.max(8, cellSize - 4); clampPan(); draw()"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607ZM13.5 10.5h-6" /></svg><span>Out</span></button><button class="command-button" @click="cellSize = Math.min(40, cellSize + 4); clampPan(); draw()"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607ZM10.5 7.5v6m3-3h-6" /></svg><span>In</span></button>
       </div>
-      <p class="ribbon-info">Drag to paint · Drag spawns to aim · Right-click erases · Scroll to pan · ⌘Z undo · ⌘S saves</p>
+      <div class="ribbon-group" style="border-right:0;margin-left:auto">
+        <button class="command-button" @click="showHelp = true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor"><path d="M513.5-254.5Q528-269 528-290t-14.5-35.5Q499-340 478-340t-35.5 14.5Q428-311 428-290t14.5 35.5Q457-240 478-240t35.5-14.5ZM442-394h74q0-33 7.5-52t42.5-52q26-26 41-49.5t15-56.5q0-56-41-86t-97-30q-57 0-92.5 30T342-618l66 26q5-18 22.5-39t53.5-21q32 0 48 17.5t16 38.5q0 20-12 37.5T506-526q-44 39-54 59t-10 73Zm38 314q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/></svg><span>Help</span></button>
+      </div>
     </section>
     <section class="workspace">
       <div ref="viewport" class="viewport" :style="{ cursor: tool === SELECT_TOOL ? 'default' : 'crosshair' }" @wheel="onWheel" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointerup="finishGesture" @pointercancel="finishGesture" @contextmenu.prevent><canvas ref="canvas"></canvas><canvas ref="overlay" class="overlay"></canvas></div>
@@ -413,6 +416,36 @@ onBeforeUnmount(() => { window.clearTimeout(saveTimer); worker.terminate(); wind
           <button class="modal-danger" @click="clearMap(); showClearConfirm = false">Clear All</button>
           <button @click="showClearConfirm = false">Cancel</button>
         </div>
+      </div>
+    </div>
+    <div v-if="showHelp" class="modal-backdrop" @click.self="showHelp = false">
+      <div class="modal help-modal">
+        <h2>Help</h2>
+        <h3>Mouse</h3>
+        <dl class="help-list">
+          <dt>Left-click drag</dt><dd>Paint with the selected tile</dd>
+          <dt>Right-click drag</dt><dd>Erase cells</dd>
+          <dt>Scroll wheel</dt><dd>Pan the viewport</dd>
+          <dt>Drag after placing a spawn</dt><dd>Set Player/Ghost facing direction</dd>
+          <dt>Select tool + click</dt><dd>Select a cell (click again to deselect)</dd>
+        </dl>
+        <h3>Keyboard shortcuts</h3>
+        <dl class="help-list">
+          <dt><kbd>Ctrl</kbd>/<kbd>&#8984;</kbd> + <kbd>Z</kbd></dt><dd>Undo</dd>
+          <dt><kbd>Ctrl</kbd>/<kbd>&#8984;</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd></dt><dd>Redo</dd>
+          <dt><kbd>Ctrl</kbd>/<kbd>&#8984;</kbd> + <kbd>Y</kbd></dt><dd>Redo</dd>
+          <dt><kbd>Ctrl</kbd>/<kbd>&#8984;</kbd> + <kbd>S</kbd></dt><dd>Save</dd>
+          <dt><kbd>Esc</kbd></dt><dd>Close modals</dd>
+        </dl>
+        <h3>Tools</h3>
+        <dl class="help-list">
+          <dt>Select</dt><dd>Click a cell to select it for rotation</dd>
+          <dt>Rotate</dt><dd>Rotate the selected Player/Ghost 90&#176; clockwise</dd>
+          <dt>Wall / Pellet / Power pellet</dt><dd>Paint tiles on the board</dd>
+          <dt>Player / Ghost</dt><dd>Place a spawn, then drag to set direction</dd>
+          <dt>Erase</dt><dd>Remove a tile (same as right-click)</dd>
+        </dl>
+        <div class="modal-actions"><button @click="showHelp = false">Close</button></div>
       </div>
     </div>
   </main>
