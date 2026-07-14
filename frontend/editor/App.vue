@@ -22,6 +22,7 @@ const size = ref(31);
 const saveState = ref<"loading" | "saved" | "saving" | "unsaved" | "offline" | "conflict">("loading");
 const message = ref("");
 const showGenerateModal = ref(false);
+const showClearConfirm = ref(false);
 const cursor = ref<[number, number] | null>(null);
 const undoStack: CellChange[][] = [];
 const redoStack: CellChange[][] = [];
@@ -279,7 +280,7 @@ function render(): void {
   }
 }
 function keyboard(event: KeyboardEvent): void {
-  if (event.key === "Escape" && showGenerateModal.value) { showGenerateModal.value = false; return; }
+  if (event.key === "Escape") { if (showClearConfirm.value) { showClearConfirm.value = false; return; } if (showGenerateModal.value) { showGenerateModal.value = false; return; } }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") { event.preventDefault(); event.shiftKey ? redo() : undo(); }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "y") { event.preventDefault(); redo(); }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") { event.preventDefault(); void save(); }
@@ -297,7 +298,7 @@ onBeforeUnmount(() => { window.clearTimeout(saveTimer); worker.terminate(); wind
         <span class="ribbon-title">Actions</span>
         <button class="command-button" @click="showGenerateModal = true"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg><span>New</span></button>
         <button class="command-button" @click="openLevel()"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg><span>Reload</span></button>
-        <button class="command-button" @click="clearMap"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg><span>Clear All</span></button>
+        <button class="command-button" @click="showClearConfirm = true"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg><span>Clear All</span></button>
         <button class="command-button" @click="save" :disabled="saveState === 'saving' || saveState === 'conflict'"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor"><path d="M840-680v480q0 33-23.5 56.5T760-120H200q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h480l160 160Zm-80 34L646-760H200v560h560v-446ZM565-275q35-35 35-85t-35-85q-35-35-85-35t-85 35q-35 35-35 85t35 85q35 35 85 35t85-35ZM240-560h360v-160H240v160Zm-40-86v446-560 114Z"/></svg><span>Save</span></button>
         <button class="command-button" :disabled="!canUndo" @click="undo"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3" /></svg><span>Undo</span></button>
         <button class="command-button" :disabled="!canRedo" @click="redo"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m15 15 6-6m0 0-6-6m6 6H9a6 6 0 0 0 0 12h3" /></svg><span>Redo</span></button>
@@ -330,6 +331,16 @@ onBeforeUnmount(() => { window.clearTimeout(saveTimer); worker.terminate(); wind
         <div class="modal-actions">
           <button @click="generate">Generate</button>
           <button @click="showGenerateModal = false">Cancel</button>
+        </div>
+      </div>
+    </div>
+    <div v-if="showClearConfirm" class="modal-backdrop" @click.self="showClearConfirm = false">
+      <div class="modal">
+        <h2>Clear All</h2>
+        <p class="modal-text">This will erase every cell on the board. You can undo this action.</p>
+        <div class="modal-actions">
+          <button class="modal-danger" @click="clearMap(); showClearConfirm = false">Clear All</button>
+          <button @click="showClearConfirm = false">Cancel</button>
         </div>
       </div>
     </div>
